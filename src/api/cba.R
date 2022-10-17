@@ -2,6 +2,7 @@ library(tidyverse)
 library(httr)
 library(glue)
 library(jsonlite)
+library(priceR)
 
 START_DATE <- "2022-01-01"
 END_DATE <- "2022-10-16"
@@ -32,9 +33,9 @@ get_data_cba_agg <- \(start, end) {
 
   data_cba_agg <- full_data_cba_agg$data$rows %>%
     as.data.frame() %>%
-    set_names(full_data_cba_agg$data$cols$name)
+    set_names(full_data_cba_agg$data$cols$name) %>%
+    mutate(sum_usd = convert_currencies(as.numeric(sum), from = "UAH", to = "USD", date = as.Date(date)))
 }
 
 data_cba_agg <- get_data_cba_agg(START_DATE, END_DATE)
-
 saveRDS(data_cba_agg, "data/data_cba_agg.RDS")
