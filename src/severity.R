@@ -12,10 +12,18 @@ data_civ_cas <- read.csv("data/severity/Data_ ReliefWeb Crisis Figures Data - hi
     TRUE ~ figure_name
   )) %>%
   filter(crisis_index == 27 & str_detect(figure_name, "civ_")) %>%
-  select(date = figure_date, variable = figure_name, value = figure_value) %>%
-  pivot_wider(names_from = variable, values_from = value) %>%
-  mutate(date = if_else(date == "2021-03-10", "2022-03-10", date)) %>%
+  select(date = figure_date, type = figure_name, value = figure_value) %>%
+  pivot_wider(names_from = type, values_from = value) %>%
+  mutate(date = ymd(if_else(date == "2021-03-10", "2022-03-10", date))) %>%
   arrange(date)
+
+# data_civ_cas %>%
+#   pivot_longer(c(civ_killed, civ_injured, civ_both), names_to = "type", values_to = "value") %>%
+#   group_by(type) %>%
+#   mutate(d_value = value - lag(value)) %>%
+#   ggplot(aes(x = date, y = d_value, color = type)) +
+#   geom_line() +
+#   facet_wrap(~ type, scales = "free_y")
 
 ## Russian casualties
 START_MONTH <- "2022-02"
