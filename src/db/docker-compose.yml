@@ -1,0 +1,29 @@
+version: '3.9'
+
+services:
+
+  mongo:
+    image: mongo
+    restart: always
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: $MONGODB_USERNAME
+      MONGO_INITDB_ROOT_PASSWORD: $MONGODB_PWD
+    volumes:
+      - thesis-data:/data/db
+      - $PROJECT_DIR/data:/tmp/data
+      - $PROJECT_DIR/src/db:/tmp/scripts
+
+  mongo-express:
+    image: mongo-express
+    restart: always
+    ports:
+      - 8081:8081
+    environment:
+      ME_CONFIG_MONGODB_SERVER: mongo
+      ME_CONFIG_MONGODB_ADMINUSERNAME: $MONGODB_USERNAME
+      ME_CONFIG_MONGODB_ADMINPASSWORD: $MONGODB_PWD
+      ME_CONFIG_MONGODB_ENABLE_ADMIN: true
+
+volumes:
+  thesis-data:
+    external: true
