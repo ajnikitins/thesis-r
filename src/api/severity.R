@@ -4,6 +4,7 @@ library(glue)
 library(rvest)
 
 ## Ukranian civilian casualties
+# From https://data.humdata.org/dataset/reliefweb-crisis-figures
 data_civ_cas <- read.csv("data/severity/Data_ ReliefWeb Crisis Figures Data - historical_figures.csv") %>%
   mutate(figure_name = case_when(
     str_detect(figure_name, fixed("Civilians Killed since 24 Feb 2022")) ~ "civ_killed",
@@ -17,6 +18,8 @@ data_civ_cas <- read.csv("data/severity/Data_ ReliefWeb Crisis Figures Data - hi
   mutate(date = ymd(if_else(date == "2021-03-10", "2022-03-10", date))) %>%
   arrange(date)
 
+saveRDS(data_civ_cas, "data/severity/data_civ_cas.RDS")
+
 # data_civ_cas %>%
 #   pivot_longer(c(civ_killed, civ_injured, civ_both), names_to = "type", values_to = "value") %>%
 #   group_by(type) %>%
@@ -26,9 +29,6 @@ data_civ_cas <- read.csv("data/severity/Data_ ReliefWeb Crisis Figures Data - hi
 #   facet_wrap(~ type, scales = "free_y")
 
 ## Russian casualties
-START_MONTH <- "2022-02"
-END_MONTH <- "2022-10"
-
 get_data_rus_cas <- \(start, end) {
   months <- seq(ym(start), ym(end), by = "month") %>%
     map_chr(~ paste(year(.), month(.), sep = "-"))
@@ -53,7 +53,7 @@ get_data_rus_cas <- \(start, end) {
 
   data_rus_cas <- data_rus_cas_bare %>%
     unnest(casualties) %>%
-    separate(casualties, into = c("type", "value"), sep = " — ") %>%
+    separate(casualties, into = c("type", "value"), sep = " \u2014 ") %>%
     # There also is the number of captives in some "Military personnel" values
     # Some groups were merged later
     mutate(date = dmy(date),
@@ -73,7 +73,9 @@ get_data_rus_cas <- \(start, end) {
     summarize(value = sum(value), .groups = "drop")
 }
 
-data_rus_cas <- get_data_rus_cas(START_MONTH, END_MONTH)
+data_rus_cas <- get_data_rus_cas(start = Sys.getenv("RUS_CAS_START"), end = Sys.getenv("RUS_CAS_END"))
+
+saveRDS(data_rus_cas, "data/severity/data_rus_cas.RDS")
 
 # data_rus_cas %>%
 #   group_by(type) %>%
