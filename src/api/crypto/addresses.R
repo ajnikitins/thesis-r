@@ -11,7 +11,7 @@ get_crypto_addresses <- \() {
       # Get coins
       coins <- charity[-1] %>% html_element(".g-cols--2") %>% html_text2()
       # Get addresses
-      addresses <- charity[-1] %>% html_element(".g-cols--10") %>% html_text2()
+      addresses <- charity[-1] %>% html_element(".g-cols--10") %>% html_text2() %>% tolower()
 
       if (length(addresses) > 0) {
         out <- data.frame(name = name, coin = coins, address = addresses)
@@ -19,8 +19,10 @@ get_crypto_addresses <- \() {
       } else {
         acc
       }
-    }, .init = NULL)
+    }, .init = NULL) %>%
+    separate_rows(coin, sep = ", ") %>%
+    separate_rows(address, sep = "\\n")
 }
 
 crypto_addresses <- get_crypto_addresses()
-write.csv(crypto_addresses, "data/addresses.csv", row.names = FALSE)
+write.csv(crypto_addresses, "data/crypto/addresses.csv", row.names = FALSE)
