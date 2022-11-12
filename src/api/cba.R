@@ -4,8 +4,8 @@ library(glue)
 library(jsonlite)
 library(priceR)
 
-START_DATE <- "2022-01-01"
-END_DATE <- "2022-10-16"
+START_DATE <- Sys.getenv("CBA_START")
+END_DATE <- Sys.getenv("CBA_END")
 
 
 ## Row-level data
@@ -22,7 +22,7 @@ END_DATE <- "2022-10-16"
 #   tmp <- fromJSON(rawToChar(res_cba$content))
 # }
 
-## Aggregated graph level
+## Aggregated graph level ----
 
 get_data_cba_agg <- \(start, end) {
 
