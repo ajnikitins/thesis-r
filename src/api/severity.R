@@ -2,6 +2,7 @@ library(tidyverse)
 library(lubridate)
 library(glue)
 library(rvest)
+library(readxl)
 
 ## Ukranian civilian casualties
 # From https://data.humdata.org/dataset/reliefweb-crisis-figures
@@ -20,13 +21,6 @@ data_civ_cas <- read.csv("data/severity/Data_ ReliefWeb Crisis Figures Data - hi
 
 saveRDS(data_civ_cas, "data/severity/data_civ_cas.RDS")
 
-# data_civ_cas %>%
-#   pivot_longer(c(civ_killed, civ_injured, civ_both), names_to = "type", values_to = "value") %>%
-#   group_by(type) %>%
-#   mutate(d_value = value - lag(value)) %>%
-#   ggplot(aes(x = date, y = d_value, color = type)) +
-#   geom_line() +
-#   facet_wrap(~ type, scales = "free_y")
 
 ## Russian casualties
 get_data_rus_cas <- \(start, end) {
@@ -77,9 +71,8 @@ data_rus_cas <- get_data_rus_cas(start = Sys.getenv("RUS_CAS_START"), end = Sys.
 
 saveRDS(data_rus_cas, "data/severity/data_rus_cas.RDS")
 
-# data_rus_cas %>%
-#   group_by(type) %>%
-#   mutate(d_value = value - lag(value)) %>%
-#   ggplot(aes(x = date, y = d_value, color = type)) +
-#   geom_line() +
-#   facet_wrap(~ type, scales = "free_y")
+## Conflict events
+# From https://acleddata.com/ukraine-crisis/#data
+data_confl_evs <- read_excel("data/severity/Ukraine_Black_Sea_2020_2022_Nov04.xlsx")
+
+saveRDS(data_confl_evs, "data/severity/data_confl_evs.RDS")
