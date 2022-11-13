@@ -4,7 +4,7 @@ library(glue)
 
 # Count tweets ----
 
-data_tweet_count_daily <- count_all_tweets(
+data_tweet_count <- count_all_tweets(
   query = "ukraine war",
   start_tweets = Sys.getenv("TWITTER_TWEET_START"),
   end_tweets = Sys.getenv("TWITTER_TWEET_END"),
