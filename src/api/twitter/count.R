@@ -15,5 +15,5 @@ data_tweet_count <- count_all_tweets(
   is_reply = FALSE,
   is_quote = FALSE,
   remove_promoted = TRUE,
-  file = glue("data/tweets/count/data_count_{Sys.getenv('TWITTER_COUNT_GRANULARITY')}.RDS")
+  file = glue("data/tweets/count/data_tweet_count_{Sys.getenv('TWITTER_COUNT_GRANULARITY')}.RDS")
 )
