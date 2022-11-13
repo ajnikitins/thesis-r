@@ -95,3 +95,17 @@ data_cba_txs_filt %>%
   geom_line() +
   labs(x = NULL, y = "Log of daily donation total value (USD)") +
   theme(legend.position = "none")
+
+### Twitter
+# Load raw daily tweet count data
+data_tweet_count_day <- readRDS("data/tweets/count/data_tweet_count_day.RDS")
+
+# Process raw daily tweet count data
+data_tweet_count_day_filt <- data_tweet_count_day %>%
+  mutate(date = ymd(as_datetime(start)))
+
+# Daily log tweet count
+data_tweet_count_day_filt %>%
+  ggplot(aes(x = date, y = log(tweet_count))) +
+  geom_line() +
+  labs(x = NULL, y = "Log of daily tweet count")
