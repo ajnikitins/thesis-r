@@ -3,8 +3,7 @@ library(tidyverse)
 library(glue)
 
 # Count tweets ----
-
-data_tweet_count <- count_all_tweets(
+data_tweet_count_raw <- count_all_tweets(
   query = "ukraine war",
   start_tweets = Sys.getenv("TWITTER_TWEET_START"),
   end_tweets = Sys.getenv("TWITTER_TWEET_END"),
@@ -15,5 +14,14 @@ data_tweet_count <- count_all_tweets(
   is_reply = FALSE,
   is_quote = FALSE,
   remove_promoted = TRUE,
-  file = glue("data/tweets/count/data_tweet_count_{Sys.getenv('TWITTER_COUNT_GRANULARITY')}.RDS")
+  file = glue("data/tweets/count/data_tweet_count_{Sys.getenv('TWITTER_COUNT_GRANULARITY')}_raw.RDS")
 )
+
+# data_tweet_count_raw <- readRDS(glue("data/tweets/count/data_tweet_count_{Sys.getenv('TWITTER_COUNT_GRANULARITY')}_raw.RDS"))
+
+# Reformat raw twitter counts
+data_tweet_count <- data_tweet_count_raw %>%
+  mutate(date = as_date(start)) %>%
+  select(date, tweet_count)
+
+saveRDS(data_tweet_count, glue("data/tweets/count/data_tweet_count_{Sys.getenv('TWITTER_COUNT_GRANULARITY')}.RDS"))
