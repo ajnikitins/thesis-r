@@ -8,6 +8,8 @@ services:
     environment:
       MONGO_INITDB_ROOT_USERNAME: $MONGODB_USERNAME
       MONGO_INITDB_ROOT_PASSWORD: $MONGODB_PWD
+    ports:
+      - 27017:27017
     volumes:
       - thesis-data:/data/db
       - $PROJECT_DIR/data:/tmp/data
