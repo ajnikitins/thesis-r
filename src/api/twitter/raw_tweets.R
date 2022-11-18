@@ -4,7 +4,7 @@ library(lubridate)
 
 # Load actual tweets ----
 
-data_tweet_count <- get_all_tweets(
+data_tweet_raw <- get_all_tweets(
   query = "ukraine war",
   start_tweets = Sys.getenv("TWITTER_TWEET_START"),
   end_tweets = Sys.getenv("TWITTER_TWEET_END"),
