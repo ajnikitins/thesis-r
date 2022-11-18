@@ -54,7 +54,6 @@ btc_data_txs_raw <- lapply(btc_data, \(set) {
   # Converts to USD using daily exchange rates
   txs$exch_rate <- btc_data_rate[match(floor_date(txs$time, unit = "minute"), btc_data_rate$date), "close"]
   txs$result_usd <- txs$result / 100000000 * txs$exch_rate
-  txs$address <- tolower(set$address)
   txs$name <- (subset(btc_addresses, address == tolower(set$address)))[["name"]]
 
   txs
@@ -63,7 +62,8 @@ btc_data_txs_raw <- lapply(btc_data, \(set) {
 
 # Process txs data for saving
 btc_data_txs <- btc_data_txs_raw %>%
-  select(name, address, time, value_usd = result_usd) %>%
+  mutate(type = "Bitcoin") %>%
+  select(type, name, time, value_usd = result_usd) %>%
   # Filter to incoming transactions
   filter(value_usd > 0)
 

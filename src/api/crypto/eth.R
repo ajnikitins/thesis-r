@@ -42,8 +42,11 @@ eth_data_txs_raw <- lapply(eth_data, \(set) {
   reduce(rbind)
 
 eth_data_txs <- eth_data_txs_raw %>%
+  mutate(type = "Ethereum") %>%
   # Filter to incoming transactions
   filter(tolower(to_address) == address) %>%
-  select(name, address, time, value_usd = value_quote)
+  # Potentially filter out token transactions?
+  filter(value_quote > 0) %>%
+  select(type, name, time, value_usd = value_quote)
 
 saveRDS(eth_data_txs, "data/crypto/data_eth_txs.RDS")
