@@ -1,12 +1,12 @@
+library(tidyverse)
 library(httr)
 library(glue)
 library(jsonlite)
-library(purrr)
 library(priceR)
 library(lubridate)
 
 # Load addresses
-btc_addresses <- read.csv("data/addresses.csv", header = TRUE, sep = ",") %>%
+btc_addresses <- read.csv("data/crypto/addresses.csv", header = TRUE, sep = ",") %>%
   filter(coin == "Bitcoin")
 
 # Query Blockchain.info API to get transactions
@@ -34,20 +34,28 @@ get_btc_data <- \(address) {
   btc_data
 }
 
+# Get raw BTX transaction data
 btc_data <- lapply(btc_addresses$address, get_btc_data)
+saveRDS(btc_data, "data/crypto/data_btc.RDS")
 
-saveRDS(btc_data, "data/crypto/addresses.csv")
+# btc_data <- readRDS("data/crypto/data_btc.RDS")
+
+# Load BTC/USD exchange rate data
+btc_data_rate <- read.csv("data/crypto/Bitstamp_BTCUSD_2022_minute.csv", skip = 1, header = TRUE) %>%
+  mutate(date = as_datetime(date))
 
 # Collect txs data into a single data frame
 btc_data_txs <- lapply(btc_data, \(set) {
   txs <- set$txs
   if (length(txs) == 0) return(NULL)
 
+  txs$time <- as_datetime(txs$time)
+
   # Converts to USD using daily exchange rates
-  # TODO: Check whether need to convert to instantaneous USD
-  txs$result_usd <- convert_currencies(txs$result / 100000000, from = "BTC", to = "USD", date = as_date(as_datetime(txs$time)))
-  txs$address <- set$address
-  txs$name <- (subset(btc_addresses, address == set$address))[["name"]]
+  txs$exch_rate <- btc_data_rate[match(floor_date(txs$time, unit = "minute"), btc_data_rate$date), "close"]
+  txs$result_usd <- txs$result / 100000000 * txs$exch_rate
+  txs$address <- tolower(set$address)
+  txs$name <- (subset(btc_addresses, address == tolower(set$address)))[["name"]]
 
   txs
 }) %>%
