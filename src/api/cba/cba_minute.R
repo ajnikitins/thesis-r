@@ -31,12 +31,12 @@ get_count <- \(start_offset, duration) {
 
 get_period <- \(start_offset, duration, time_begin) {
   time_exec <- Sys.time()
-  start_offset <- start_offset + min_diff(time_exec, time_begin)
+  dilation <- min_diff(time_exec, time_begin)
 
-  cat(glue("start_offset: {start_offset}, duration: {duration}"))
-  if (start_offset < 0) start_offset <- 0
+  cat(glue("start_offset: {start_offset}, dilation: {dilation}, duration: {duration}"))
+  if (start_offset + dilation < 0) start_offset <- -dilation
 
-  count <- get_count(start_offset, duration)
+  count <- get_count(start_offset + dilation, duration)
   cat(glue(", count: {count} \n", .trim = FALSE))
 
   list(start_offset = start_offset, duration = duration, count = count, time_exec = time_exec, time_begin = time_begin)
@@ -76,6 +76,61 @@ while (length(queue) > 0) {
   queue <- queue[-resolved_tasks]
 }
 
+# get_data_cba_minute <- \(base_periods = NULL, time_start = as_datetime("2021-12-31"), time_end = Sys.time(), cutoff = 2000, buffer = 0) {
+#
+#   verify_period <- \(system, period) {
+#     if (period$count > cutoff) {
+#       system$queue <- append(system$queue, list(futureCall(get_period, list(period$start_offset - buffer, ceiling(period$duration / 2) + 2 * buffer, time_end)),
+#                                   futureCall(get_period, list(period$start_offset + floor(period$duration / 2) - buffer, ceiling(period$duration / 2) + 2 * buffer, time_end))))
+#     } else {
+#       system$periods <- append(system$periods, list(period))
+#     }
+#   }
+#
+#
+#   if (is.null(periods)) {
+#     base_periods <- get_period(0, min_diff(time_end, time_start), time_end)
+#   }
+#
+#   system <- list(queue = list(), periods = list())
+#
+#   system <- base_periods %>%
+#     map(\(period) list(start_offset = period$start_offset + min_diff(time_end, period$time_begin), duration = period$duration, count = period$count, time_exec = time_end, time_begin = time_end))
+#     reduce(verify_period, .init = system)
+#
+#   while (length(system$queue) > 0) {
+#     resolved_tasks <- which(resolved(system$queue))
+#
+#     if (length(resolved_tasks) == 0) {
+#       print(glue("Waiting on {length(system$queue)} running tasks..."))
+#       Sys.sleep(0.01)
+#       next
+#     }
+#
+#     system <- system$
+#
+#     it_resolved_tasks <- resolved_tasks
+#     while (length(it_resolved_tasks) > 0) {
+#       print(glue("Remaining resolved tasks: {length(it_resolved_tasks)-1}"))
+#
+#       resolved_task <- it_resolved_tasks[[1]]
+#
+#       period <- value(queue[[resolved_task]])
+#
+#       if (period$count > cutoff) {
+#         queue <- append(queue, list(futureCall(get_period, list(period$start_offset - buffer, ceiling(period$duration / 2) + 2 * buffer, time_end)),
+#                                     futureCall(get_period, list(period$start_offset + floor(period$duration / 2) - buffer, ceiling(period$duration / 2) + 2 * buffer, time_end))))
+#       } else {
+#         periods <- append(periods, list(period))
+#       }
+#
+#       it_resolved_tasks <- it_resolved_tasks[-1]
+#     }
+#
+#     queue <- queue[-resolved_tasks]
+#   }
+#
+# }
 
 
 # url_5_base <- 'https://report.comebackalive.in.ua/api/public/dashboard/e4f44bc7-05f4-459b-a10b-cc10e6637217/dashcard/5/card/5?parameters=[{"type":"date/all-options","value":"past200minutes"}]'
