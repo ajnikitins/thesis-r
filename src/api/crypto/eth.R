@@ -5,6 +5,8 @@ library(priceR)
 library(glue)
 library(lubridate)
 
+# TODO: Filter out token transactions
+
 # Load addresses
 eth_addresses <- read.csv("data/crypto/addresses.csv", header = TRUE, sep = ",") %>%
   filter(coin == "Ethereum")
@@ -24,16 +26,24 @@ eth_data <- lapply(eth_addresses$address, get_eth_data)
 
 saveRDS(eth_data, "data/crypto/data_eth.RDS")
 
+# eth_data <- readRDS("data/crypto/data_eth.RDS")
+
 # Collect txs data into a single data frame
-eth_data_txs <- lapply(eth_data, \(set) {
+eth_data_txs_raw <- lapply(eth_data, \(set) {
   txs <- set$data$items
   if (length(txs) == 0) return(NULL)
 
+  txs$time <- as_datetime(txs$block_signed_at)
   txs$address <- set$data$address
   txs$name <- (subset(eth_addresses, address == set$data$address))[["name"]]
 
   txs
 }) %>%
   reduce(rbind)
+
+eth_data_txs <- eth_data_txs_raw %>%
+  # Filter to incoming transactions
+  filter(tolower(to_address) == address) %>%
+  select(name, address, time, value_usd = value_quote)
 
 saveRDS(eth_data_txs, "data/crypto/data_eth_txs.RDS")
