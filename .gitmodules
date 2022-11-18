@@ -1,3 +1,3 @@
 [submodule "src/api/air_raid_sirens/ukrainian-air-raid-sirens-dataset"]
-	path = src/api/air_raid_sirens/ukrainian-air-raid-sirens-dataset
+	path = src/api/sirens/ukrainian-air-raid-sirens-dataset
 	url = https://github.com/Vadimkin/ukrainian-air-raid-sirens-dataset.git
