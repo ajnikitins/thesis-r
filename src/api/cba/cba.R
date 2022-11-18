@@ -49,6 +49,7 @@ get_data_cba_value <- \(start, end) {
 
 data_cba_value <- get_data_cba_value(START_DATE, END_DATE)
 saveRDS(data_cba_value, "data/cba/data_cba_value.RDS")
+# data_cba_value <- readRDS("data/cba/data_cba_value.RDS")
 
 ## Individual daily count level ----
 get_data_cba_count <- \(start, end) {
@@ -82,3 +83,10 @@ get_data_cba_count <- \(start, end) {
 
 data_cba_count <- get_data_cba_count(START_DATE, END_DATE)
 saveRDS(data_cba_count, "data/cba/data_cba_count.RDS")
+# data_cba_count <- readRDS("data/cba/data_cba_count.RDS")
+
+data_cba <- data_cba_count %>%
+  left_join(data_cba_value, by = c("date", "type")) %>%
+  mutate(mean_usd = if_else(is.nan(value_usd / count), 0, value_usd / count))
+
+saveRDS(data_cba, "data/cba/data_cba.RDS")
