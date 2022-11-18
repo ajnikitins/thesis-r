@@ -45,7 +45,7 @@ btc_data_rate <- read.csv("data/crypto/Bitstamp_BTCUSD_2022_minute.csv", skip = 
   mutate(date = as_datetime(date))
 
 # Collect txs data into a single data frame
-btc_data_txs <- lapply(btc_data, \(set) {
+btc_data_txs_raw <- lapply(btc_data, \(set) {
   txs <- set$txs
   if (length(txs) == 0) return(NULL)
 
@@ -60,5 +60,11 @@ btc_data_txs <- lapply(btc_data, \(set) {
   txs
 }) %>%
   reduce(bind_rows)
+
+# Process txs data for saving
+btc_data_txs <- btc_data_txs_raw %>%
+  select(name, address, time, value_usd = result_usd) %>%
+  # Filter to incoming transactions
+  filter(value_usd > 0)
 
 saveRDS(btc_data_txs, "data/crypto/data_btc_txs.RDS")
