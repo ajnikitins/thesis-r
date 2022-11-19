@@ -26,7 +26,7 @@ library(RSelenium)
 # Remember to start the selenium server
 # Start with the broadest date period needed, wait until it crashes and the restart from a later date
 
-res <- data.frame(date = Date(), count = numeric())
+res <- data.frame(date = Date(), factiva_count = numeric())
 
 # dates <- seq(dmy("01012022"), dmy("31102022"), by = 1)
 dates <- seq(dmy("22102022"), dmy("31102022"), by = 1)
@@ -72,8 +72,8 @@ walk(dates, \(date) {
     `[[`(73) %>%
     str_extract("(?<=C:)\\d*")
 
-  print(glue("Date: {date}, count: {result}"))
-  res <<- add_row(res, date = date, count = as.numeric(result))
+  print(glue("Date: {date}, factiva_count: {result}"))
+  res <<- add_row(res, date = date, factiva_count = as.numeric(result))
 
   Sys.sleep(4)
   browser$findElement(using = "id", value = "btnModifySearch")$clickElement()
@@ -81,3 +81,5 @@ walk(dates, \(date) {
 })
 
 browser$close()
+
+saveRDS(res, "data/factiva.RDS")

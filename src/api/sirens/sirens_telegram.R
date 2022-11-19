@@ -26,10 +26,10 @@ data_sirens <- data.frame(date = as_date(seq(min(int_start(data_sirens_oblast$in
   rowwise() %>%
   mutate(sirens = list(get_sirens(data_sirens_oblast, date)),
          sirens_kyiv = list(bind_rows(get_sirens(data_sirens_oblast, date, "Київ"), get_sirens(data_sirens_oblast, date, "Київська область"))),
-         count_all = nrow(sirens),
-         mean_duration_all = mean(sirens$duration_mins),
-         count_kyiv = nrow(sirens_kyiv),
-         mean_duration_kyiv = mean(sirens_kyiv$duration_mins)) %>%
+         siren_count_all = nrow(sirens),
+         siren_mean_duration_all = mean(sirens$duration_mins),
+         siren_count_kyiv = nrow(sirens_kyiv),
+         siren_mean_duration_kyiv = mean(sirens_kyiv$duration_mins)) %>%
   ungroup() %>%
   select(-sirens, -sirens_kyiv) %>%
   right_join(expand(., date = seq(dmy("01-01-2022"), max(date), by = 1)), by = "date") %>%
