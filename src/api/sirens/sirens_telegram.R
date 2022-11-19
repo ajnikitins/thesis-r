@@ -15,30 +15,34 @@ data_sirens_oblast <- data_sirens_oblast_raw %>%
          duration_mins = int_length(interval) / 60,
          interval = interval(floor_date(int_start(interval), "day"), floor_date(int_end(interval), "day")), .keep = "unused")
 
-# Given name of region and day, find sirens
-get_sirens <- \(data_sirens, day, name = ".all") {
+# Given name of region and date, find sirens
+get_sirens <- \(data_sirens, date, name = ".all") {
   data_sirens %>%
-    filter((name == ".all" | enc2native(region) == enc2native(name)) & (day %within% interval))
+    filter((name == ".all" | enc2native(region) == enc2native(name)) & (date %within% interval))
 }
 
 # Aggregate to date-siren count/duration
-data_sirens <- data.frame(time = seq(min(int_start(data_sirens_oblast$interval)), max(int_end(data_sirens_oblast$interval)), by = 60 * 60 * 24)) %>%
+data_sirens <- data.frame(date = as_date(seq(min(int_start(data_sirens_oblast$interval)), max(int_end(data_sirens_oblast$interval)), by = 60 * 60 * 24))) %>%
   rowwise() %>%
-  mutate(sirens = list(get_sirens(data_sirens_oblast, time)),
-         sirens_kyiv = list(bind_rows(get_sirens(data_sirens_oblast, time, "Київ"), get_sirens(data_sirens_oblast, time, "Київська область"))),
+  mutate(sirens = list(get_sirens(data_sirens_oblast, date)),
+         sirens_kyiv = list(bind_rows(get_sirens(data_sirens_oblast, date, "Київ"), get_sirens(data_sirens_oblast, date, "Київська область"))),
          count_all = nrow(sirens),
          mean_duration_all = mean(sirens$duration_mins),
          count_kyiv = nrow(sirens_kyiv),
          mean_duration_kyiv = mean(sirens_kyiv$duration_mins)) %>%
-  select(-sirens, -sirens_kyiv)
+  ungroup() %>%
+  select(-sirens, -sirens_kyiv) %>%
+  right_join(expand(., date = seq(dmy("01-01-2022"), max(date), by = 1)), by = "date") %>%
+  mutate(across(-date, ~ replace_na(., 0))) %>%
+  arrange(date)
 
 saveRDS(data_sirens, "data/sirens/data_sirens.RDS")
 
 ## Share of naive sirens
 # data_sirens_oblast %>%
-#   mutate(day = floor_date(started_at, "days"),
+#   mutate(date = floor_date(started_at, "dates"),
 #          naive = if_else(naive == "True", 1, 0)) %>%
-#   group_by(day) %>%
+#   group_by(date) %>%
 #   summarize(prop_naive = sum(naive) / n()) %>%
-#   ggplot(aes(x = day, y = prop_naive)) + geom_line()
+#   ggplot(aes(x = date, y = prop_naive)) + geom_line()
 
