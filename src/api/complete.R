@@ -1,8 +1,8 @@
 library(tidyverse)
 
 # Merge fiat and crypto donations
-data_cba <- readRDS("../../data/cba/data_cba.RDS")
-data_crypto <- readRDS("../../data/crypto/data_crypto.RDS")
+data_cba <- readRDS("data/cba/data_cba.RDS")
+data_crypto <- readRDS("data/crypto/data_crypto.RDS")
 
 data_donations <- bind_rows(data_cba, data_crypto) %>%
   # Filter to period
@@ -23,16 +23,16 @@ data_donations <- bind_rows(data_cba, data_crypto) %>%
             .groups = "drop") %>%
   arrange(type, date)
 
-saveRDS(data_donations, "../../data/data_donations.RDS")
+saveRDS(data_donations, "data/data_donations.RDS")
 
 ## Load independent variables
-data_sirens <- readRDS("../../data/sirens/data_sirens.RDS")
-data_tweet_count <- readRDS("../../data/tweets/count/data_tweet_count_day.RDS")
-data_factiva <- readRDS("../../data/factiva.RDS")
+data_sirens <- readRDS("data/sirens/data_sirens.RDS")
+data_tweet_count <- readRDS("data/tweets/count/data_tweet_count_day.RDS")
+data_factiva <- readRDS("data/factiva.RDS")
 
 data_complete <- data_donations %>%
   left_join(data_sirens, by = "date") %>%
   left_join(data_tweet_count, by = "date") %>%
   left_join(data_factiva, by = "date")
 
-saveRDS(data_complete, "../../data/data_complete.RDS")
+saveRDS(data_complete, "data/data_complete.RDS")
