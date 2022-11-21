@@ -29,10 +29,12 @@ saveRDS(data_donations, "data/data_donations.RDS")
 data_sirens <- readRDS("data/sirens/data_sirens.RDS")
 data_tweet_count <- readRDS("data/tweets/count/data_tweet_count_day.RDS")
 data_factiva <- readRDS("data/factiva.RDS")
+data_severity <- readRDS("data/severity/data_severity.RDS")
 
 data_complete <- data_donations %>%
   left_join(data_sirens, by = "date") %>%
   left_join(data_tweet_count, by = "date") %>%
-  left_join(data_factiva, by = "date")
+  left_join(data_factiva, by = "date") %>%
+  left_join(data_severity, by = "date")
 
 saveRDS(data_complete, "data/data_complete.RDS")

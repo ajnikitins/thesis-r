@@ -6,21 +6,31 @@ library(readxl)
 
 ## Ukranian civilian casualties
 # From https://data.humdata.org/dataset/reliefweb-crisis-figures
-data_civ_cas <- read.csv("data/severity/Data_ ReliefWeb Crisis Figures Data - historical_figures.csv") %>%
-  mutate(figure_name = case_when(
-    str_detect(figure_name, fixed("Civilians Killed since 24 Feb 2022")) ~ "civ_killed",
-    str_detect(figure_name, fixed("Civilians Injured since 24 Feb 2022")) ~ "civ_injured",
-    str_detect(figure_name, fixed("Civilian Casualties since 24 Feb 2022 (killed & injured)")) ~ "civ_both",
-    TRUE ~ figure_name
-  )) %>%
-  filter(crisis_index == 27 & str_detect(figure_name, "civ_")) %>%
-  select(date = figure_date, type = figure_name, value = figure_value) %>%
-  pivot_wider(names_from = type, values_from = value) %>%
-  mutate(date = ymd(if_else(date == "2021-03-10", "2022-03-10", date))) %>%
-  arrange(date)
+# data_civ_cas <- read.csv("data/severity/Data_ ReliefWeb Crisis Figures Data - historical_figures.csv") %>%
+#   mutate(figure_name = case_when(
+#     str_detect(figure_name, fixed("Civilians Killed since 24 Feb 2022")) ~ "civ_killed",
+#     str_detect(figure_name, fixed("Civilians Injured since 24 Feb 2022")) ~ "civ_injured",
+#     str_detect(figure_name, fixed("Civilian Casualties since 24 Feb 2022 (killed & injured)")) ~ "civ_both",
+#     TRUE ~ figure_name
+#   )) %>%
+#   filter(crisis_index == 27 & str_detect(figure_name, "civ_")) %>%
+#   select(date = figure_date, type = figure_name, value = figure_value) %>%
+#   pivot_wider(names_from = type, values_from = value) %>%
+#   mutate(date = ymd(if_else(date == "2021-03-10", "2022-03-10", date))) %>%
+#   arrange(date)
+
+# From https://www.statista.com/statistics/1296924/ukraine-war-casualties-daily/
+data_civ_cas <- read_excel("data/severity/UN_civ_casualties.xlsx") %>%
+  transmute(date = mdy(date),
+         cas_civ = killed + injured) %>%
+  add_row(date = dmy("24-02-2022"), cas_civ = 0, .before = 1) %>%
+  mutate(cas_civ = cas_civ - lag(cas_civ)) %>%
+  right_join(expand(., date = full_seq(date, 1)), by = "date") %>%
+  arrange(date) %>%
+  fill(cas_civ) %>%
+  mutate(cas_civ = replace_na(cas_civ, 0))
 
 saveRDS(data_civ_cas, "data/severity/data_civ_cas.RDS")
-
 
 ## Russian casualties
 get_data_rus_cas <- \(start, end) {
@@ -73,6 +83,21 @@ saveRDS(data_rus_cas, "data/severity/data_rus_cas.RDS")
 
 ## Conflict events
 # From https://acleddata.com/ukraine-crisis/#data
-data_confl_evs <- read_excel("data/severity/Ukraine_Black_Sea_2020_2022_Nov04.xlsx")
+data_confl_evs <- read_excel("data/severity/Ukraine_Black_Sea_2020_2022_Nov04.xlsx") %>%
+  select(date = EVENT_DATE) %>%
+  group_by(date) %>%
+  summarise(confl_evs = n())
 
 saveRDS(data_confl_evs, "data/severity/data_confl_evs.RDS")
+
+data_cas_rus_agg <- data_rus_cas %>%
+  filter(type == "Military personnel") %>%
+  select(-type, cas_rus_mil = value)
+
+data_severity <- data_civ_cas %>%
+  select(date, cas_civ) %>%
+  left_join(data_cas_rus_agg, by = "date") %>%
+  left_join(data_confl_evs, by = "date") %>%
+  filter(date <= "2022-10-31")
+
+saveRDS(data_severity, "data/severity/data_severity.RDS")
