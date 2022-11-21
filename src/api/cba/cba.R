@@ -83,14 +83,15 @@ get_data_cba_count <- \(start, end) {
   dates <- seq(as_date(start), as_date(end), 1)
 
   # Base query parameters - date, string_type, string_filter
-  url_cba_query <- '[{"type":"date/all-options","value":"<<date>>","target":["dimension",["field",77,null]],"id":"b6f7e9ea"},{"type":"string/=","value":["<<string_type>>"],"target":["dimension",["field",78,null]],"id":"64daade5"},{"type":"string/contains","value":["<<string_filter>>"],"target":["dimension",["field",81,null]],"options":{"case-sensitive":false},"id":"d41494b"}]'
+  url_cba_query <- '[{"type":"date/all-options","value":"<<date>>","target":["dimension",["field",77,null]],"id":"b6f7e9ea"},{"type":"string/=","value":["<<string_type>>"],"target":["dimension",["field",78,null]],"id":"64daade5"}]'
 
   # Loop over type and then date, requesting daily count
-  counts <- types[[22]] %>%
+  counts <- types %>%
     reduce(\(acc, type) {
 
       # Change settings depending on Solidgate type
       if (type == "Solidgate UKR") {
+        url_cba_query <- '[{"type":"date/all-options","value":"<<date>>","target":["dimension",["field",77,null]],"id":"b6f7e9ea"},{"type":"string/=","value":["<<string_type>>"],"target":["dimension",["field",78,null]],"id":"64daade5"},{"type":"string/contains","value":["<<string_filter>>"],"target":["dimension",["field",81,null]],"options":{"case-sensitive":false},"id":"d41494b"}]'
         string_type <- "Solidgate Card"
         string_filter <- "UKR"
       } else {
