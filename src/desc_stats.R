@@ -25,26 +25,48 @@ data <- readRDS("data/data_complete.RDS")
 data %>%
   filter(date >= "2022-02-24") %>%
   select(-date, -type, -don_count, -don_mean_usd) %>%
-  mutate(across(c(siren_count, tweet_count), as.numeric)) %>%
+  mutate(across(c(siren_count, tweet_count), as.double)) %>%
   as.data.frame() %>%
   stargazer(type = "html",
             align = TRUE,
             title = "Descriptive Statistics for Independent Variables",
-            out = "pics/desc_stats.html",
+            out = "pics/desc_stats_ind.html",
             digits = 2,
-            digits.extra = 2  )
+            digits.extra = 2,
+            column.sep.width = "100pt")
 
-# data_sum_ind <- data %>%
-#   filter(date > "2022-02-24") %>%
-#   select(-date, -type, -don_mean_usd, -don_count) %>%
-#   pivot_longer(everything(), names_to = "var", values_to = "val") %>%
-#   group_by(var) %>%
-#   summarise(
-#     n = n(),
-#     total = sum(val),
-#     mean = mean(val),
-#     median = median(val),
-#     sd = sd(val),
-#     max = max(val),
-#     min = min(val)
-#   )
+edata %>%
+  filter(date >= "2022-02-24") %>%
+  filter(type == "Ukrainian") %>%
+  select(don_count, don_mean_usd) %>%
+  as.data.frame() %>%
+  stargazer(type = "html",
+            align = TRUE,
+            title = "Descriptive Statistics for Dependent Variables (Ukrainian)",
+            out = "pics/desc_stats_ukr.html",
+            digits = 2,
+            digits.extra = 2)
+
+data %>%
+  filter(date >= "2022-02-24") %>%
+  filter(type == "Foreign") %>%
+  select(don_count, don_mean_usd) %>%
+  as.data.frame() %>%
+  stargazer(type = "html",
+            align = TRUE,
+            title = "Descriptive Statistics for Dependent Variables (Foreign)",
+            out = "pics/desc_stats_for.html",
+            digits = 2,
+            digits.extra = 2)
+
+data %>%
+  filter(date >= "2022-02-24") %>%
+  filter(type == "Crypto") %>%
+  select(don_count, don_mean_usd) %>%
+  as.data.frame() %>%
+  stargazer(type = "html",
+            align = TRUE,
+            title = "Descriptive Statistics for Dependent Variables (Crypto)",
+            out = "pics/desc_stats_crypto.html",
+            digits = 2,
+            digits.extra = 2)
