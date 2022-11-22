@@ -51,7 +51,7 @@ btc_data_txs_raw <- lapply(btc_data, \(set) {
 
   txs$time <- as_datetime(txs$time)
 
-  # Converts to USD using daily exchange rates
+  # Converts to USD using minute exchange rates
   txs$exch_rate <- btc_data_rate[match(floor_date(txs$time, unit = "minute"), btc_data_rate$date), "close"]
   txs$result_usd <- txs$result / 100000000 * txs$exch_rate
   txs$name <- (subset(btc_addresses, address == tolower(set$address)))[["name"]]
