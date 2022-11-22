@@ -3,19 +3,23 @@ library(dplyr)
 library(readxl)
 library(lubridate)
 library(zoo)
+library(RcppRoll)
+library(ggpubr)
 
+# setwd("G:/My Drive/BSc Thesis")
+
+# data <- readRDS("data_complete.RDS")
 data <- readRDS("data/data_complete.RDS")
 summary(data)
 
-#RQ1: relationships between emotion intensity (geolocated tweet count for world,
+
+#RQ1: relations between emotion intensity (geolocated tweet count for world,
 #air sirens for UAH) and donation count/value
 #RQ2: relationships between different emotion types (events) and donation count/value
 #RQ3: does sentiment explain heterogeneity between donor types? (UAH, foreign, crypto)
 
-# One graph per RQ
-# One graph = two plots of value & count of donations + zoomed-in version
-
 #creating important events variable
+# events <- read_xlsx("important_events.xlsx")
 events <- read_xlsx("data/important_events.xlsx")
 events <- events %>%
   mutate(date = floor_date(as_date(date), unit = "day")) %>%
@@ -23,6 +27,13 @@ events <- events %>%
   filter(event_name != "N/A")
 
 #dataset with 7 days window (for full timeline)
+# data_k7 <- data %>%
+#   group_by(type) %>%
+#   mutate(don_count = rollmean(don_count, k = 7, fill = NA),
+#          don_mean_usd = rollmean(don_mean_usd, k = 7, fill = NA),
+#          tweet_count = rollmean(tweet_count, k = 7, fill = NA),
+#          siren_count = rollmean(siren_count, k = 7, fill = NA))
+
 data_k7 <- data %>%
   group_by(type) %>%
   mutate(don_count = log(rollmean(don_count, k = 7, fill = NA)),
@@ -39,6 +50,11 @@ data_k2 <- data %>%
          tweet_count = log(rollmean(tweet_count, k = 1, fill = NA)),
          siren_count = log(rollmean(siren_count, k = 1, fill = NA)))
 
+#back-up dataset for plotting w/o moving averages
+data_plots <- data %>%
+  group_by(type)
+
+########################################################################
 #plot of counts by type
 data_k7 %>%
   filter(date <= ymd("2022-10-31") & date >= ymd("2022-02-10")) %>%
@@ -57,8 +73,143 @@ data_k7 %>%
   ylab("log of Average donation, by type") +
   NULL
 
-#Would love to have labels on important events smh
-#...would take me another million years
+##########################################################################
+create_scatterplot <- \(.data, var_dep, var_ind, xlab = "", ylab = "") {
+  .data %>%
+    filter(don_count>0) %>%
+    filter(date >= ymd("2022-02-10")) %>%
+    ggplot(aes(x = { { var_ind } }, y = { {var_dep} } )) +
+    geom_point(aes(color = type, alpha = 0.5)) +
+    geom_smooth(aes(color=type), method="lm",se=FALSE) +
+    xlab(xlab) +
+    ylab(ylab) +
+    facet_wrap(~type, scales="free") +
+    theme(legend.position = "none") +
+    NULL
+}
+
+#scatterplot count | tweets | by type
+
+data %>%
+  create_scatterplot(log(don_count), log(tweet_count),"Tweets count", "Donation count, by type")
+
+#scatterplot count | sirens | by type
+data %>%
+  filter(siren_count>0) %>%
+  create_scatterplot(log(don_count), log(siren_count),"Air raid sirens count", "Donation count, by type")
+
+#scatterplot value | tweet | by type
+data %>%
+  create_scatterplot(log(don_mean_usd), log(tweet_count),"Tweets count", "Donation mean value, by type")
+
+#scatterplot value | sirens | type
+data %>%
+  filter(siren_count>0) %>%
+  create_scatterplot(log(don_count), log(siren_count),"Air raid sirens count", "Donation mean value, by type")
+
+#!!!!! Change colours, add labels (?)
+
+# donations count | important events (by type)
+A <- data_k7 %>%
+  filter(date >= ymd("2022-02-10")) %>%
+  ggplot(aes(x = date, y = don_count)) +
+  geom_line() +
+  geom_vline(data = events, aes(xintercept = date, color = coloring), size = 1, alpha = 0.5) +
+  scale_color_manual(values = c(`1` = "red", `0` = "turquoise")) +
+  xlab("Time") +
+  ylab("Donation count, by type") +
+  facet_wrap(~type) +
+  theme(legend.position = "none") +
+  NULL
+
+# donations count | important events | close-up (by type)
+B <- data %>%
+  filter(date <= ymd("2022-05-02") & date >= ymd("2022-04-18")) %>%
+  ggplot(aes(x = date, y = log(don_count_des))) +
+  geom_line(aes(color=type)) +
+  geom_vline(data = events, aes(xintercept = date, color = coloring), size = 1, alpha = 0.5) +
+  #scale_color_manual(values = c(`1` = "red", `0` = "turquoise")) +
+  xlab("Time") +
+  ylab("Donation count, by type") +
+  theme(legend.position = "none") +
+  NULL
+
+# donations value | important events (by type)
+C <- data_k7 %>%
+  filter(date >= ymd("2022-02-10")) %>%
+  ggplot(aes(x = date, y = don_mean_usd)) +
+  geom_line() +
+  geom_vline(data = events, aes(xintercept = date, color = coloring), size = 1, alpha = 0.5) +
+  scale_color_manual(values = c(`1` = "red", `0` = "turquoise")) +
+  xlab("Time") +
+  ylab("Average donation, by type") +
+  facet_wrap(~type) +
+  theme(legend.position = "none") +
+  NULL
+
+# donations value | important events | close-up (by type)
+D <- data %>%
+  filter(date <= ymd("2022-05-02") & date >= ymd("2022-04-18")) %>%
+  ggplot(aes(x = date, y = don_mean_usd_des)) +
+  geom_line(aes(color=type)) +
+  geom_vline(data = events, aes(xintercept = date, color = coloring), size = 1, alpha = 0.5) +
+  #scale_color_manual(values = c(`1` = "red", `0` = "turquoise")) +
+  xlab("Time") +
+  ylab("Average donation, by type") +
+  theme(legend.position = "none") +
+  NULL
+
+#Merge together
+
+events <- ggarrange(A, C, ncol = 1, nrow = 2)
+events
+
+closeup <- ggarrange(B, D, ncol = 2, nrow = 1)
+closeup
+
+
+#using regression residuals to deseasonalise
+
+#create weekday dummies
+data_dummies <- data %>%
+  mutate(weekday = weekdays(date)) %>%
+  mutate (monday = ifelse(weekday=="Monday",1,0)) %>%
+  mutate (tuesday = ifelse(weekday=="Tuesday",1,0)) %>%
+  mutate (wednesday = ifelse(weekday=="Wednesday",1,0)) %>%
+  mutate (thursday = ifelse(weekday=="Thursday",1,0)) %>%
+  mutate (friday = ifelse(weekday=="Friday",1,0)) %>%
+  mutate (saturday = ifelse(weekday=="Saturday",1,0)) %>%
+  mutate (sunday = ifelse(weekday=="Sunday",1,0))
+
+#obtain residuals
+mod_don_count_des <- data_dummies %>%
+  lm(don_count ~ monday + tuesday + wednesday + thursday + friday + saturday, data=.)
+summary(mod_don_count_des)
+
+mod_don_mean_usd_des <- data_dummies %>%
+  lm(don_mean_usd ~ monday + tuesday + wednesday + thursday + friday + saturday, data=.)
+summary(mod_don_mean_usd_des)
+
+#add residuals to original dataframe
+#data$don_count_des <- abs(don_count_des$residuals)
+#data$don_mean_usd_des <- abs(don_mean_usd_des$residuals)
+
+data$don_count_des <- mod_don_count_des$residuals
+data$don_mean_usd_des <- mod_don_mean_usd_des$residuals
+
+#plot to check
+data %>%
+  ggplot(aes(x=date, y=don_count_des)) +
+  geom_line()
+
+data %>%
+  ggplot(aes(x=date, y=don_count)) +
+  geom_line()
+
+#save to original dataset
+saveRDS(data, file="data_complete.RDS")
+
+
 ####################################################################
 #RQ1################################################################
 ####################################################################
@@ -214,6 +365,3 @@ data_k7 %>%
   filter(date >= ymd("2022-02-10")) %>%
   create_emotion_plot_type(don_mean_usd, "log of Average donation, by type")
 
-
-#using regression residuals to deseasonalise
-#...would take me another million years
