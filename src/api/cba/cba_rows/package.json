@@ -5,8 +5,7 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "run": "nodemon index.js",
-    "debug": "nodemon --inspect index.js",
+    "run": "forever start index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
