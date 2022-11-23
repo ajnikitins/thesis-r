@@ -32,7 +32,7 @@ data_k7 <- data %>%
   group_by(type) %>%
   mutate(don_count = log(rollmean(don_count, k = 7, fill = NA)),
          don_mean_usd = log(rollmean(don_mean_usd, k = 7, fill = NA)),
-         tweet_count = log(rollmean(tweet_count, k = 7, fill = NA)),
+         tweet_count = log(rollmean(tweet_count, k = 5, fill = NA)),
          siren_count = log(rollmean(siren_count, k = 7, fill = NA)))
 
 #dataset with 2 day window (for more zoomed-in graphs)
@@ -344,7 +344,7 @@ data_k7_sum %>%
 #all time donation *count against important events, by emotion (blue - neg, red - pos) + tweet_count in blue
 data_k7_sum %>%
   filter(date >= ymd("2022-02-10")) %>%
-  create_emotion_plot(don_count, "log of Total donation count") +
+  create_emotion_plot(don_count, "log of Total donation count, log of Tweet count") +
   geom_line(aes(y = tweet_count), color = "blue")
 
 #Both positive and negative events immediately increase donation count?
