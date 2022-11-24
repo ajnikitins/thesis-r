@@ -9,14 +9,15 @@ import StealthPlugin from "puppeteer-extra-plugin-stealth"
 
 puppeteer.use(StealthPlugin())
 
-import bluebird from "bluebird"
+import {Cluster} from "puppeteer-cluster";
 
 // Define settings
 const NUM_WORKERS = 8
 const MAX_PAGES = 64384
 
 const getLastPage = async (subdir) => {
-  let path = subdir ? `../../../../data/cba_rows/${subdir}` : "../../../../data/cba_rows"
+  let path = subdir ? `../../../../data/cba_rows/${subdir}`
+      : "../../../../data/cba_rows"
 
   let files = await fs.readdir(path)
   return files
@@ -36,42 +37,44 @@ const getLastPage = async (subdir) => {
 // When finished, clear cookies and reload;
 // Repeat till finished
 
-puppeteer.launch({
-  headless: false,
-  executablePath: executablePath(),
-  userDataDir: "./.cache"
-}).then(async browser => {
-  // const page = await browser.newPage()
-  // await page.setViewport({width: 800, height: 600})
+// const page = await browser.newPage()
+// await page.setViewport({width: 800, height: 600})
 
-  // Get last written page
-  let lastPage = await getLastPage()
-  console.log(`Last found page is ${lastPage}`)
+// Get last written page
+let lastPage = await getLastPage()
+console.log(`Last found page is ${lastPage}`)
 
-  if (lastPage === MAX_PAGES) {
-    console.log("All pages have already been scraped, exiting...")
-    await browser.close()
-    return
+if (lastPage === MAX_PAGES) {
+  console.log("All pages have already been scraped, exiting...")
+  process.exit()
+}
+
+let remainingPages = MAX_PAGES - lastPage
+
+// Create page numbers to be requested
+let requests = [];
+let diff = Math.ceil(remainingPages / NUM_WORKERS)
+for (let i = 0; i < NUM_WORKERS; i++) {
+  let request = {
+    id: i,
+    start: lastPage + 1 + (diff) * i,
+    end: Math.min(lastPage + diff * (i + 1), MAX_PAGES)
   }
+  requests.push(request)
+}
+// console.log(requests)
+(async () => {
+  const cluster = await Cluster.launch({
+    concurrency: Cluster.CONCURRENCY_BROWSER,
+    maxConcurrency: 4,
+    puppeteerOptions: { headless: false, executablePath: executablePath()},
+    workerCreationDelay: 100,
+    timeout: 120000,
+    puppeteer: puppeteer
+  })
 
-  let remainingPages = MAX_PAGES - lastPage
-
-  // Create page numbers to be requested
-  let requests = [];
-  let diff = Math.ceil(remainingPages / NUM_WORKERS)
-  for (let i = 0; i < NUM_WORKERS; i++) {
-    let request = {
-      id: i,
-      start: lastPage + 1 + (diff) * i,
-      end: Math.min(lastPage + diff * (i + 1), MAX_PAGES)
-    }
-    requests.push(request)
-  }
-  // console.log(requests)
-
-  await bluebird.map(requests, async (request) => {
+  requests.map((request) => cluster.execute(request, async ({ page, data: request }) => {
     // Create a new page for each request
-    let page = await browser.newPage()
     let lastPage = await getLastPage(request.id) || request.start - 1
     let endPage = request.end
 
@@ -115,15 +118,19 @@ puppeteer.launch({
       if (rows.length > 0) {
         console.log(`Exporting pages ${lastPage + 1} to ${queriedPage}`)
         await fs.writeFile(
-            `../../../../data/cba_rows/${request.id}/${lastPage + 1}-${queriedPage}.json`,
+            `../../../../data/cba_rows/${request.id}/${lastPage
+            + 1}-${queriedPage}.json`,
             JSON.stringify(rows))
       }
 
       lastPage = queriedPage
     }
-  }, {concurrency: NUM_WORKERS})
 
-  // Clean up
-  console.log("Scraping has ended successfully, exiting...")
-  await browser.close()
-})
+    // Clean up
+    console.log(
+        `Scraping has ended successfully for tab ${request.id}, exiting...`)
+  }))
+
+  await cluster.idle()
+  await cluster.close()
+})()
