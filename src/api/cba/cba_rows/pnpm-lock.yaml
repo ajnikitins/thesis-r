@@ -1,11 +1,13 @@
 lockfileVersion: 5.4
 
 specifiers:
+  bluebird: ^3.7.2
   puppeteer: ^19.2.2
   puppeteer-extra: ^3.3.4
   puppeteer-extra-plugin-stealth: ^2.11.1
 
 dependencies:
+  bluebird: 3.7.2
   puppeteer: 19.2.2
   puppeteer-extra: 3.3.4_puppeteer@19.2.2
   puppeteer-extra-plugin-stealth: 2.11.1_puppeteer-extra@3.3.4
@@ -95,6 +97,10 @@ packages:
       buffer: 5.7.1
       inherits: 2.0.4
       readable-stream: 3.6.0
+    dev: false
+
+  /bluebird/3.7.2:
+    resolution: {integrity: sha512-XpNj6GDQzdfW+r2Wnn7xiSAd7TM3jzkxGXBGTtWKuSXv1xUV+azxAm8jdWZN06QTQk+2N2XB9jRDkvbmQmcRtg==}
     dev: false
 
   /brace-expansion/1.1.11:

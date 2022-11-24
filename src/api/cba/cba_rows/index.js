@@ -9,9 +9,13 @@ import { executablePath } from "puppeteer";
 import StealthPlugin from "puppeteer-extra-plugin-stealth"
 puppeteer.use(StealthPlugin())
 
-const getLastRow = async () => {
-  let files = await fs.readdir("../../../../data/cba_rows")
-  return files.map((fileName) =>
+const getLastPage = async (subdir) => {
+  let path = subdir ? `../../../../data/cba_rows/${subdir}` : "../../../../data/cba_rows"
+
+  let files = await fs.readdir(path)
+  return files
+  .filter((fileName) => fileName.endsWith(".json"))
+  .map((fileName) =>
       parseInt(fileName
       .split(".")[0]
       .split("-")[1]))
@@ -24,7 +28,7 @@ puppeteer.launch({ headless: false, executablePath: executablePath() }).then(asy
   await page.setViewport({ width: 800, height: 600 })
 
   // Get last written page
-  let lastPage = await getLastRow()
+  let lastPage = await getLastPage()
   console.log(`Last found page is ${lastPage}`)
 
   // Start main loop
