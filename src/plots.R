@@ -43,24 +43,25 @@ data_k7 <- data %>%
 data_dummies <- data %>%
   filter(date >= ymd("2022-02-10")) %>%
   mutate(weekday = weekdays(date)) %>%
-  mutate (monday = ifelse(weekday=="Monday",1,0)) %>%
-  mutate (tuesday = ifelse(weekday=="Tuesday",1,0)) %>%
-  mutate (wednesday = ifelse(weekday=="Wednesday",1,0)) %>%
-  mutate (thursday = ifelse(weekday=="Thursday",1,0)) %>%
-  mutate (friday = ifelse(weekday=="Friday",1,0)) %>%
-  mutate (saturday = ifelse(weekday=="Saturday",1,0)) %>%
-  mutate (sunday = ifelse(weekday=="Sunday",1,0)) %>%
+  mutate(monday = if_else(weekday=="Monday",1,0)) %>%
+  mutate(tuesday = if_else(weekday=="Tuesday",1,0)) %>%
+  mutate(wednesday = if_else(weekday=="Wednesday",1,0)) %>%
+  mutate(thursday = if_else(weekday=="Thursday",1,0)) %>%
+  mutate(friday = if_else(weekday=="Friday",1,0)) %>%
+  mutate(saturday = if_else(weekday=="Saturday",1,0)) %>%
+  mutate(sunday = if_else(weekday=="Sunday",1,0)) %>%
+  mutate(outbreak = if_else(date <= "2022-03-10", 1, 0)) %>%
   select(-starts_with("siren"), -tweet_count, -factiva_count, -weekday) %>%
   pivot_wider(names_from = type, values_from = c(don_count, don_mean_usd)) %>%
   filter()
 
 
 mod_don_count_des <- data_dummies %>%
-  lm(cbind(don_count_Ukrainian, don_count_Foreign, don_count_Crypto) ~ monday + tuesday + wednesday + thursday + friday + saturday, data=.)
+  lm(cbind(don_count_Ukrainian, don_count_Foreign, don_count_Crypto) ~ outbreak*(monday + tuesday + wednesday + thursday + friday + saturday) , data=.)
 summary(mod_don_count_des)
 
 mod_don_mean_usd_des <- data_dummies %>%
-  lm(cbind(don_mean_usd_Ukrainian, don_mean_usd_Foreign, don_mean_usd_Crypto) ~ monday + tuesday + wednesday + thursday + friday + saturday, data=.)
+  lm(cbind(don_mean_usd_Ukrainian, don_mean_usd_Foreign, don_mean_usd_Crypto) ~ outbreak*(monday + tuesday + wednesday + thursday + friday + saturday), data=.)
 summary(mod_don_mean_usd_des)
 
 ## Deseasonalised counts
@@ -91,8 +92,7 @@ mod_don_count_des$residuals %>%
   as.data.frame() %>%
   ggplot(aes(x = data_dummies$date, y = don_count_Crypto)) + geom_line()
 
-#add residuals to original dataframe
-
+# Add residuals to original dataframe
 data_res <- mod_don_count_des$residuals %>%
   as.data.frame() %>%
   mutate(date = data_dummies$date) %>%
@@ -208,7 +208,8 @@ create_closeup <- \(.data, var_dep, ylab = "") {
           panel.grid.minor.x = element_line(color="light grey", linewidth =0.1),
           panel.grid.major.x = element_line(color="light grey", linewidth =0.1),
           axis.text.x = element_text(angle = 90, hjust=1, colour = "black", size = 9),
-          axis.text.y = element_blank()) +
+          axis.text.y = element_blank()
+    ) +
     facet_wrap(~type, scales="free") +
     NULL
 }
