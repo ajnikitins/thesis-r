@@ -37,4 +37,11 @@ data_complete <- data_donations %>%
   left_join(data_factiva, by = "date") %>%
   left_join(data_severity, by = "date")
 
+data_complete_d <- data_complete %>%
+  mutate(don_count = ifelse(don_count == 0, NA, don_count),
+         don_mean_usd = ifelse(don_mean_usd == 0, NA, don_mean_usd),
+         d_don_mean_usd = log(don_mean_usd) - log(lag(don_mean_usd)),
+         d_don_count = log(don_count) - log(lag(don_count)),
+         .after = don_count)
+
 saveRDS(data_complete, "data/data_complete.RDS")
