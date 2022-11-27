@@ -40,8 +40,6 @@ data_complete <- data_donations %>%
 data_complete_d <- data_complete %>%
   mutate(don_count = ifelse(don_count == 0, NA, don_count),
          don_mean_usd = ifelse(don_mean_usd == 0, NA, don_mean_usd),
-         d_don_mean_usd = log(don_mean_usd) - log(lag(don_mean_usd)),
-         d_don_count = log(don_count) - log(lag(don_count)),
-         .after = don_count)
+         across(c(don_count, don_mean_usd, siren_count, siren_mean_duration, siren_prop, tweet_count, factiva_count, cas_civ, cas_rus_mil, confl_evs), ~ log(.) - log(lag(.)), .names = "d_{.col}"))
 
 saveRDS(data_complete_d, "data/data_complete.RDS")
