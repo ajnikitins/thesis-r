@@ -22,10 +22,11 @@ data_crypto_merged <- bind_rows(data_btc_txs, data_eth_txs) %>%
   filter((date != "2022-04-04" & date != "2022-07-08" & date != "2022-07-30") | value_usd < 250000)
 
 data_crypto_agg <- data_crypto_merged %>%
-  group_by(type, date) %>%
-  summarise(count = n(), mean_usd = sum(value_usd) / count, .groups = "drop") %>%
-  right_join(expand(., type, date = seq(dmy("01-01-2022"), max(date), by = 1)), by = c("type", "date")) %>%
-  mutate(across(c(count, mean_usd), ~ replace_na(., 0))) %>%
+  # group_by(type, date) %>%
+  # summarise(count = n(), mean_usd = sum(value_usd) / count, .groups = "drop") %>%
+  # right_join(expand(., type, date = seq(dmy("01-01-2022"), max(date), by = 1)), by = c("type", "date")) %>%
+  # mutate(across(c(count, mean_usd), ~ replace_na(., 0))) %>%
+  # mutate(across(c(value_usd), ~ replace_na(., 0))) %>%
   arrange(type, date)
 
 saveRDS(data_crypto_agg, "data/crypto/data_crypto.RDS")
