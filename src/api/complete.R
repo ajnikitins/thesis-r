@@ -1,4 +1,5 @@
 library(tidyverse)
+library(lubridate)
 
 # Merge fiat and crypto donations
 data_cba <- readRDS("data/cba/data_cba.RDS")
