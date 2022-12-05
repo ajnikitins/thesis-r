@@ -1,8 +1,8 @@
-import {promises as fs} from "fs";
-import bluebird from "bluebird";
+import {promises as fs} from "fs"
+import bluebird from "bluebird"
 
-import {executablePath} from "puppeteer";
-import puppeteer from "puppeteer-extra";
+import { executablePath } from "puppeteer"
+import puppeteer from "puppeteer-extra"
 import StealthPlugin from "puppeteer-extra-plugin-stealth"
 
 puppeteer.use(StealthPlugin())
@@ -33,7 +33,7 @@ puppeteer.launch({headless: false, executablePath: executablePath()}).then(
       await page.setViewport({width: 800, height: 600})
 
       // Start main loop
-      for (let lastPage = await getLastPage(); lastPage <= MAX_PAGE; lastPage = await getLastPage()) {
+      for (let lastPage = await getLastPage(); lastPage < MAX_PAGE; lastPage = await getLastPage()) {
         console.log(`Last found page is ${lastPage}`)
 
         // Start navigation
