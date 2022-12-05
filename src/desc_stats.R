@@ -72,12 +72,22 @@ data %>%
             digits.extra = 2)
 
 data %>%
-  filter(date >= "2022-02-24") %>%
+  filter(date >= "2022-03-10") %>%
+  select(date, type, starts_with("don_count"), starts_with("don_mean_usd"), starts_with("siren"), tweet_count, factiva_count, starts_with("cas"), confl_evs) %>%
   pivot_wider(names_from = "type", values_from = c("don_count", "don_mean_usd")) %>%
-  as.data.frame() %>%
-  stargazer(type = "html",
-            align = TRUE,
-            title = "Descriptive Statistics",
-            out = "pics/desc_stats.html",
-            digits = 2,
-            digits.extra = 2)
+  summary()
+
+tmp <- data %>%
+  filter(date >= "2022-03-10") %>%
+  select(date, type, starts_with("don_count"), starts_with("don_mean_usd"), starts_with("siren"), tweet_count, factiva_count, starts_with("cas"), confl_evs) %>%
+  pivot_wider(names_from = "type", values_from = c("don_count", "don_mean_usd")) %>%
+  summarize(across(-date, sd, .names = "{.col}"))
+
+
+  # as.data.frame() %>%
+  # stargazer(type = "latex",
+  #           align = TRUE,
+  #           title = "Descriptive Statistics",
+  #           out = "pics/desc_stats.tex",
+  #           digits = 2,
+  #           digits.extra = 2)
