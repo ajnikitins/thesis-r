@@ -1,6 +1,7 @@
 library(tidyverse)
 library(mongolite)
 library(stopwords)
+library(textstem)
 
 # Connect to tweet database & load tweets
 db <- mongo(collection = "tweets", db = "thesis-data", url = Sys.getenv("MONGO_URL"))
@@ -37,4 +38,8 @@ tweets_proc <- tweets %>%
   # remove one length words
   mutate(text = str_remove_all(text, "\\b[:alpha:]\\b")) %>%
   # remove extra whitespace
-  mutate(text = str_remove_all(text, "(^ +)|( +$)|( +(?= ))"))
+  mutate(text = str_remove_all(text, "(^ +)|( +$)|( +(?= ))")) %>%
+  # split tokens
+  mutate(text = str_split(text, fixed(" "))) %>%
+  # lemmatize tokens
+  mutate(text = lemmatize_words(text))
