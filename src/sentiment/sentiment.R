@@ -98,7 +98,7 @@ parse_tweets <- \(raw_tweets) {
            main_emotion = map(emotions, get_main_emotion),
            main_sentiment = map(emotions, get_main_sentiment)) %>%
     collect() %>%
-    select(tweet_id, emotions, starts_with("main"))
+    select(tweet_id, processed_text, emotions, starts_with("main"))
 
   # Add emotions to new collection
   db_emotions$insert(tweets, auto_unbox = TRUE)
@@ -117,8 +117,8 @@ db <- mongo(collection = "tweets", db = "thesis-data", url = Sys.getenv("MONGO_U
 db_emotions <- mongo(collection = "emotions", db = "thesis-data", url = Sys.getenv("MONGO_URL"))
 
 # Process tweet sentiment
-db$find(query = '{"lang": "en"}', fields = '{"text": 1}', limit = 2000, handler = parse_tweets)
+db$find(query = '{"lang": "en"}', fields = '{"text": 1}', pagesize = 50000, handler = parse_tweets)
 
 # Clean-up
 db$disconnect()
-db_emotion$disconnect()
+db_emotions$disconnect()
