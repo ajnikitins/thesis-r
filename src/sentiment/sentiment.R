@@ -1,12 +1,14 @@
 library(tidyverse)
+library(glue)
 library(mongolite)
 library(stopwords)
 library(textstem)
-library(jsonlite)
+library(multidplyr)
 
 # Process raw text for sentiment analysis
 process_text <- \(text) {
   text %>%
+    # set all words to lowercase
     tolower() %>%
     # remove mentions
     str_replace_all("@.+?\\b", " ") %>%
@@ -83,36 +85,40 @@ get_main_sentiment <- \(emot) {
   }
 }
 
-# Connect to tweet database & load tweets
-db <- mongo(collection = "tweets", db = "thesis-data", url = Sys.getenv("MONGO_URL"))
+parse_tweets <- \(raw_tweets) {
+  message(glue("Processing {nrow(raw_tweets)} tweets..."))
 
-it_tweets <- db$iterate(query = '{"lang": "en"}', fields = '{"text": 1}')
+  tweets <- raw_tweets %>%
+    rename(tweet_id = `_id`) %>%
+    partition(cl) %>%
+    # Process tweet text
+    mutate(processed_text = process_text(text)) %>%
+    # Get emotions from text
+    mutate(emotions = map(processed_text, get_emotions, nrc),
+           main_emotion = map(emotions, get_main_emotion),
+           main_sentiment = map(emotions, get_main_sentiment)) %>%
+    collect() %>%
+    select(tweet_id, emotions, starts_with("main"))
 
-raw_tweets <- it_tweets$batch(100)
-
-tweets <- raw_tweets %>%
-  bind_rows() %>%
-  rename(tweet_id = `_id`)
-
-## Process tweet text
-tweets_proc <- tweets %>%
-  # set all words to lowercase
-  mutate(processed_text = process_text(text), .keep = "unused")
+  # Add emotions to new collection
+  db_emotions$insert(tweets, auto_unbox = TRUE)
+}
 
 # Load NRC list
 nrc <- get_nrc()
 
-# Get emotions from text
-tweets_emot <- tweets_proc %>%
-  mutate(emotions = map(processed_text, get_emotions, nrc),
-         main_emotion = map(emotions, get_main_emotion),
-         main_sentiment = map(emotions, get_main_sentiment),
-         .keep = "unused")
+# Setup cluster
+cl <- new_cluster(parallel::detectCores())
+cluster_library(cl, c("tidyverse", "stopwords", "textstem"))
+cluster_copy(cl, c("nrc", "process_text", "get_emotions", "get_main_emotion", "get_main_sentiment"))
 
-# Add emotions to new collection
+# Connect to tweet database & load tweets
+db <- mongo(collection = "tweets", db = "thesis-data", url = Sys.getenv("MONGO_URL"))
 db_emotions <- mongo(collection = "emotions", db = "thesis-data", url = Sys.getenv("MONGO_URL"))
-db_emotions$insert(tweets_emot, auto_unbox = TRUE)
+
+# Process tweet sentiment
+db$find(query = '{"lang": "en"}', fields = '{"text": 1}', limit = 2000, handler = parse_tweets)
 
 # Clean-up
 db$disconnect()
-db_emotions$disconnect()
+db_emotion$disconnect()
