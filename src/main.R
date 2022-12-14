@@ -10,8 +10,7 @@ data_outliers <- data %>%
 
 data_log <- data %>%
   group_by(type) %>%
-  mutate(
-    don_total_usd = don_mean_usd * don_count,
+  mutate(don_total_usd = don_mean_usd * don_count,
     don_total_usd_log = log(don_total_usd),
     don_mean_usd_log = log(don_mean_usd),
          don_count_log = log(don_count))
@@ -64,3 +63,7 @@ data %>%
   facet_wrap(~ type, scales = "free_y")
 
 
+data %>%
+  ggplot(aes(x = date, y = d_don_mean_usd)) +
+  geom_line() +
+  facet_wrap(~ type, scales = "free_y")

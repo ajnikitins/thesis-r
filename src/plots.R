@@ -1,4 +1,6 @@
 library(tidyverse)
+library(dplyr)
+library(ggplot2)
 library(readxl)
 library(lubridate)
 library(zoo)
@@ -6,29 +8,35 @@ library(RcppRoll)
 library(ggpubr)
 library(ggnewscale)
 library(ggsci)
+library(ggrepel)
 
-# setwd("G:/My Drive/BSc Thesis/Dataset")
+setwd("G:/My Drive/BSc Thesis/Datasets")
 
-# data <- readRDS("data_complete.RDS")
-data <- readRDS("data/data_complete.RDS")
+#Main dataset | includes first dif
+data <- readRDS("data_complete (1).RDS")
+#data <- readRDS("data/data_complete.RDS")
 summary(data)
 
+data <- data %>% 
+  mutate(date = floor_date(as_date(date), unit = "day"))
 
-#RQ1: relations between emotion intensity (geolocated tweet count for world,
-#air sirens for UAH) and donation count/value
-#RQ2: relationships between different emotion types (events) and donation count/value
-#RQ3: does sentiment explain heterogeneity between donor types? (UAH, foreign, crypto)
+#Deseasoned dataset | includes deseasoned first dif
+data_des <- readRDS("data_deseasoned.RDS")
+#data <- readRDS("data/data_complete.RDS")
+summary(data_des)
 
-#creating important events variable
-# events <- read_xlsx("important_events.xlsx")
-events <- read_xlsx("data/important_events.xlsx")
+data_des <- data_des %>% 
+  mutate(date = floor_date(as_date(date), unit = "day"))
+
+#creating important events variables
+events <- read_xlsx("important_events.xlsx")
+#events <- read_xlsx("data/important_events.xlsx")
 events <- events %>%
   mutate(date = floor_date(as_date(date), unit = "day")) %>%
   mutate(coloring = as.factor(coloring)) %>%
   filter(event_name != "N/A")
 
-#dataset with 7 days window (for full timeline)
-
+#dataset with 7 day moving averages
 data_k7 <- data %>%
   group_by(type) %>%
   mutate(don_count = log(rollmean(don_count, k = 7, fill = NA)),
@@ -36,425 +44,278 @@ data_k7 <- data %>%
          tweet_count = log(rollmean(tweet_count, k = 7, fill = NA)),
          siren_count = log(rollmean(siren_count, k = 7, fill = NA)))
 
+#dataset for plotting all-time donations
+data_k7_sum <- data_k7 %>%
+  group_by(date) %>%
+  summarise(don_count = sum(don_count), don_mean_usd = sum(don_count * don_mean_usd) / sum(don_count), siren_count = unique(siren_count), tweet_count = unique(tweet_count))
 
-#using regression residuals to deseasonalise
+data_des_sum <- data_des %>% 
+  group_by(date) %>%
+  summarise(d_don_count = sum(d_don_count), d_don_mean_usd = sum(d_don_count * d_don_mean_usd) / sum(d_don_count), d_siren_count = unique(d_siren_count), d_tweet_count = unique(d_tweet_count))
 
-#create weekday dummies
-data_dummies <- data %>%
-  filter(date >= ymd("2022-02-10")) %>%
-  mutate(weekday = weekdays(date)) %>%
-  mutate(monday = if_else(weekday=="Monday",1,0)) %>%
-  mutate(tuesday = if_else(weekday=="Tuesday",1,0)) %>%
-  mutate(wednesday = if_else(weekday=="Wednesday",1,0)) %>%
-  mutate(thursday = if_else(weekday=="Thursday",1,0)) %>%
-  mutate(friday = if_else(weekday=="Friday",1,0)) %>%
-  mutate(saturday = if_else(weekday=="Saturday",1,0)) %>%
-  mutate(sunday = if_else(weekday=="Sunday",1,0)) %>%
-  mutate(outbreak = if_else(date <= "2022-03-10", 1, 0)) %>%
-  select(-starts_with("siren"), -tweet_count, -factiva_count, -weekday) %>%
-  pivot_wider(names_from = type, values_from = c(don_count, don_mean_usd)) %>%
-  filter()
+#Create annotations
+annotate1 <- data_des %>% 
+  select(d_don_count, d_don_mean_usd, don_count, don_mean_usd, type, date) %>% 
+  left_join (events, by = "date")
 
+annotate2 <- data_k7_sum %>% 
+  select(don_count, don_mean_usd, date) %>% 
+  left_join (events, by = "date")
 
-mod_don_count_des <- data_dummies %>%
-  lm(cbind(don_count_Ukrainian, don_count_Foreign, don_count_Crypto) ~ outbreak*(monday + tuesday + wednesday + thursday + friday + saturday) , data=.)
-summary(mod_don_count_des)
+annotate2_des <- data_des_sum %>% 
+  select(d_don_count, d_don_mean_usd, date) %>% 
+  left_join (events, by = "date")
 
-mod_don_mean_usd_des <- data_dummies %>%
-  lm(cbind(don_mean_usd_Ukrainian, don_mean_usd_Foreign, don_mean_usd_Crypto) ~ outbreak*(monday + tuesday + wednesday + thursday + friday + saturday), data=.)
-summary(mod_don_mean_usd_des)
-
-## Deseasonalised counts
-# Ukrainian
-mod_don_count_des$fitted.values %>%
-  as.data.frame() %>%
-  ggplot(aes(x = data_dummies$date, y = don_count_Ukrainian)) + geom_line()
-
-mod_don_count_des$residuals %>%
-  as.data.frame() %>%
-  ggplot(aes(x = data_dummies$date, y = don_count_Ukrainian)) + geom_line()
-
-# Foreign
-mod_don_count_des$fitted.values %>%
-  as.data.frame() %>%
-  ggplot(aes(x = data_dummies$date, y = don_count_Foreign)) + geom_line()
-
-mod_don_count_des$residuals %>%
-  as.data.frame() %>%
-  ggplot(aes(x = data_dummies$date, y = don_count_Foreign)) + geom_line()
-
-# Crypto donations
-mod_don_count_des$fitted.values %>%
-  as.data.frame() %>%
-  ggplot(aes(x = data_dummies$date, y = don_count_Crypto)) + geom_line()
-
-mod_don_count_des$residuals %>%
-  as.data.frame() %>%
-  ggplot(aes(x = data_dummies$date, y = don_count_Crypto)) + geom_line()
-
-# Add residuals to original dataframe
-data_res <- mod_don_count_des$residuals %>%
-  as.data.frame() %>%
-  mutate(date = data_dummies$date) %>%
-  pivot_longer(-date, names_to = "type", values_to = "don_count_des", names_prefix = "don_count_") %>%
-  left_join(data, by = c("date", "type"))
-
-data_res <- mod_don_mean_usd_des$residuals %>%
-  as.data.frame() %>%
-  mutate(date = data_dummies$date) %>%
-  pivot_longer(-date, names_to = "type", values_to = "don_mean_usd_des", names_prefix = "don_mean_usd_") %>%
-  left_join(data_res, by = c("date", "type"))
-
-#plot to check
-data_res %>%
-  ggplot(aes(x=date, y=don_count_des)) +
-  geom_line() +
-  facet_wrap(~ type, scales = "free_y")
-
-data %>%
-  ggplot(aes(x=date, y=don_count)) +
-  geom_line()
-
+#RQ1: relations between emotion intensity (geolocated tweet count for world,
+#air sirens for UAH) and donation count/value
+#RQ2: relationships between different emotion types (events) and donation count/value
+#RQ3: does intensity explain heterogeneity between donor types? (UAH, foreign, crypto)
 
 ########################################################################
-#plot of counts by type
-data_k7 %>%
-  filter(date <= ymd("2022-10-31") & date >= ymd("2022-02-10")) %>%
-  ggplot(aes(x = date, y = don_count)) +
-  geom_line(aes(color = type)) +
-  xlab("Time") +
-  ylab("log of Donation count, by type") +
-  NULL
+#simple plots of counts and values by type
 
-#plot of values by type
-data_k7 %>%
-  filter(date <= ymd("2022-10-31") & date >= ymd("2022-02-10")) %>%
-  ggplot(aes(x = date, y = don_mean_usd)) +
-  geom_line(aes(color = type)) +
-  xlab("Time") +
-  ylab("log of Average donation, by type") +
-  NULL
+create_distrib <- \(.data, var_dep, ylab = "") {
+  .data %>%
+    filter(date <= ymd("2022-10-31") & date >= ymd("2022-02-10")) %>%
+    ggplot(aes(x = date, y =  log({ {var_dep} } ) - log(lag({ {var_dep} })))) +
+    geom_line(aes(color = type), linewidth = 1) +
+    scale_x_date(date_labels = "%d/%m", date_breaks = "1 month") +
+    scale_color_uchicago() +
+    theme_classic() +
+    theme(legend.spacing.y = unit(0, "mm"), 
+          legend.position = "bottom",
+          panel.border = element_rect(color = "black", linewidth = 0.2, fill=NA),
+          panel.grid.major.x = element_line(color="light grey", size =0.1),
+          axis.text.x = element_text(angle = 45, hjust=1, colour = "black", size = 9),
+          axis.text.y = element_text(hjust=1, colour = "black", size = 9),
+          axis.title = element_text(face="bold"))  +
+    xlab(NULL) +
+    ylab(ylab) +
+    #facet_wrap(~type, scale = "free") +
+    NULL
+}
+
+
+#plot of counts by type \ mov avg
+a <- data_k7 %>%
+  create_distrib(don_count,"Donation count") 
+#add events
+a + new_scale_color() +
+  geom_vline(data = events, aes(xintercept = date, color = coloring), linewidth = 2, alpha = 0.5, show.legend = FALSE) + 
+  geom_label_repel(data=annotate2, 
+                   aes(label=event_name), size = 2,
+                   box.padding = unit(1, "lines"),
+                   direction = "x",
+                   segment.color = "grey",
+                   nudge_x= 3,
+                   nudge_y = 1.5) +
+  scale_color_manual(values = c(`1` = "red", `0` = "dark green")) 
+
+#plot of counts by type \ des (absolute values)
+data_des %>%
+  create_distrib(d_don_count,"Donation count, deseasonalised") + facet_wrap(~type, scale = "free")
+
+#plot of values by type \ mov avg
+b <- data_k7 %>%
+  create_distrib(don_mean_usd,"Donation mean value")
+#add events
+b + new_scale_color() +
+  geom_vline(data = events, aes(xintercept = date, color = coloring), linewidth = 2, alpha = 0.5, show.legend = FALSE) + 
+  geom_label_repel(data=annotate2, 
+                   aes(label=event_name), size = 2,
+                   box.padding = unit(1, "lines"),
+                   direction = "x",
+                   segment.color = "grey",
+                   nudge_x= 3,
+                   nudge_y = 1.5) +
+  scale_color_manual(values = c(`1` = "red", `0` = "dark green"))
+
+#plot of values by type \ des (absolute values)
+data_des %>%
+  create_distrib(d_don_mean_usd,"Donation mean value, deseasonalised") + facet_wrap(~type, scale = "free")
+
+#Merge a & b
+count_value <- ggarrange(a, b, ncol = 2, nrow = 1, legend = "bottom", common.legend = TRUE)
+count_value 
 
 ##########################################################################
+#Scatterplots
 create_scatterplot <- \(.data, var_dep, var_ind, xlab = "", ylab = "") {
   .data %>%
     filter(don_count>0) %>%
-    filter(date >= ymd("2022-02-10")) %>%
-    ggplot(aes(x = { { var_ind } }, y = { {var_dep} } )) +
+    filter(date > ymd("2022-02-10")) %>%
+    ggplot(aes(x = { {var_ind} }, y = { {var_dep} })) +
     geom_point(aes(color = type), alpha = 0.5) +
-    geom_smooth(aes(color=type), method="lm",se=FALSE) +
+    geom_smooth(aes(color = type), method="lm",se=FALSE) +
     scale_color_uchicago() +
     xlab(xlab) +
     ylab(ylab) +
-    theme(legend.position = "bottom") +
     theme_classic() +
+    theme(legend.spacing.y = unit(0, "mm"), 
+          legend.position = "none",
+          panel.border = element_rect(color = "black", linewidth = 0.2, fill=NA),
+          panel.grid.major = element_blank(),
+          axis.text = element_text(colour = "black", size = 9),
+          axis.title.y = element_text(face="bold", size = 10.2),
+          axis.title.x = element_text(face="bold", size = 13)) +
     facet_wrap(~type, scales="free") +
     NULL
 }
 
-#scatterplot count | tweets | by type
+#scatterplot count | tweets | type
+f <- data %>%
+  create_scatterplot(log(don_count), log(tweet_count),"", "log Donation count")
+f
 
-data %>%
-  create_scatterplot(log(don_count), log(tweet_count),"Tweets count", "Donation count, by type")
+#scatterplot count | tweets | type
+F <- data_des %>%
+  create_scatterplot(d_don_count, d_tweet_count,"", "Δ Donation count, deseasonalised")
+F 
 
-#scatterplot count | sirens | by type
-data %>%
-  filter(siren_count>0) %>%
-  create_scatterplot(log(don_count), log(siren_count),"Air raid sirens count", "Donation count, by type")
+
+#scatterplot count | sirens | type
+#data %>%
+#  filter(siren_count>0) %>%
+#  create_scatterplot(log(don_count), log(siren_count),"Air raid sirens count", "Donation count")
 
 #scatterplot count | sirens proportion | type
-data %>%
-  create_scatterplot(log(don_count), siren_prop,"Territory affected", "Donation mean value, by type")
+#data %>%
+#  create_scatterplot(log(don_count), siren_prop,"Territory affected", "Donation mean value")
 
-#scatterplot value | tweet | by type
-data %>%
-  create_scatterplot(log(don_mean_usd), log(tweet_count),"Tweets count", "Donation mean value, by type")
+#scatterplot value | tweet | type
+g <- data %>%
+  create_scatterplot(log(don_mean_usd), log(tweet_count),"log Tweets count", "log Donation mean value")
+g
+
+G <- data_des %>%
+  create_scatterplot(d_don_mean_usd, d_tweet_count,"Δ Tweets count", "Δ Donation mean value, deseasonalised")
+G 
 
 #scatterplot value | sirens | type
-data %>%
-  filter(siren_count>0) %>%
-  create_scatterplot(log(don_mean_usd), log(siren_count),"Air raid sirens count", "Donation mean value, by type")
+#data %>%
+#  filter(siren_count>0) %>% 
+#  create_scatterplot(log(don_mean_usd), log(siren_count),"Air raid sirens count", "Donation mean value, by type")
 
 #scatterplot value | sirens proportion | type
-data %>%
-  create_scatterplot(log(don_mean_usd), siren_prop,"Territory affected", "Donation mean value, by type")
+#data %>%
+#  create_scatterplot(log(don_mean_usd), siren_prop,"Territory affected", "Donation mean value, by type")
 
+#Merge f & g
+scatter_count_value <- ggarrange(F, G, ncol = 1, nrow = 2, legend = "none")
+scatter_count_value
 
 ############################################################################################
-
-#annotate <- data_res %>%
-#  select(don_count_des, don_mean_usd_des, type, date) %>%
-#  left_join (events, by = "date")
+#Close-up graphs
 
 create_closeup <- \(.data, var_dep, ylab = "") {
   .data %>%
     filter(date <= ymd("2022-10-17") & date >= ymd("2022-10-01")) %>%
     ggplot(aes(x = date, y = { {var_dep} } )) +
-    geom_line(aes(color=type)) +
+    geom_line(aes(color=type), linewidth = 1) +
     scale_color_uchicago() +
     new_scale_color() +
     geom_vline(data = events, aes(xintercept = date, color = coloring), linewidth = 1, alpha = 0.5) +
-    #geom_text(label = annotate$event_name) +
-    #annotate(geom = "text", x = ymd("2022-10-08"), y = { {var_dep} }, label = "Kerch Bridge Explosion") +
-    #annotate(geom = "label", x = ymd("2022-10-10"), y = { {var_dep} }, label = "Nationwide missile strikes") +
+    geom_label_repel(data=filter(annotate1, event_name == "Kerch bridge explosion" | event_name == "Nationwide missile strikes"), 
+                     aes(label=event_name), size = 4,
+                     box.padding = unit(1, "lines"),
+                     direction = "x",
+                     segment.color = "grey",
+                     nudge_x = 12,
+                     nudge_y = 12) +
     scale_color_manual(values = c(`1` = "red", `0` = "dark green"), guide = "none") +
-    xlab("Time") +
     ylab(ylab) +
+    xlab(NULL) +
     scale_x_date(date_labels = "%d/%m", date_breaks = "3 days") +
     theme_classic() +
-    theme(legend.spacing.y = unit(0, "mm"),
-          legend.position = "bottom",
-          panel.border = element_rect(colour = "black", linewidth = 0.2, fill=NA),
-          panel.grid.minor.x = element_line(color="light grey", linewidth =0.1),
-          panel.grid.major.x = element_line(color="light grey", linewidth =0.1),
-          axis.text.x = element_text(angle = 90, hjust=1, colour = "black", size = 9),
-          axis.text.y = element_blank()
-    ) +
-    facet_wrap(~type, scales="free") +
+    theme(legend.spacing.y = unit(0, "mm"), 
+          legend.position = "none",
+          panel.border = element_rect(color = "black", linewidth = 0.2, fill=NA),
+          panel.grid.major.x = element_line(color="light grey", size =0.1),
+          panel.grid.major.y = element_blank(),
+          panel.grid.minor = element_blank(),
+          axis.text.x = element_text(angle = 45, hjust=1, colour = "black", size = 9),
+          axis.text.y = element_text(hjust=1.1, colour = "black", size = 9),
+          axis.title = element_text(face="bold", size=16)) +
+   facet_wrap(~type, scales="free") +
     NULL
 }
 
-#count
-T <- data_res %>%
-  #filter(type=="Ukrainian") %>%
-  create_closeup(don_count_des,"Donation count, by type")
-T
+#count | des absolute values
+T <- data_des %>%
+  #filter(type=="Ukrainian") %>% 
+  create_closeup(don_count,"Donation count, deseasonalised") 
+T 
 
-#value
-P <- data_res %>%
-  #filter(type=="Ukrainian") %>%
-  create_closeup(don_mean_usd_des,"Donation mean value, by type")
+#value | des absolute values
+P <- data_des %>%
+#filter(type=="Ukrainian") %>% 
+  create_closeup(don_mean_usd,"Donation mean value, deseasonalised")
 P
 
+#count | des first difference
+t <- data_des %>%
+  #filter(type=="Ukrainian") %>% 
+  create_closeup(d_don_count,"Δ Donation count, deseasonalised") 
+t 
+
+
+#value | des first difference
+p <- data_des %>%
+  #filter(type=="Ukrainian") %>% 
+  create_closeup(d_don_mean_usd,"Δ Donation mean value, deseasonalised")
+p
+
 #merged
-oct_closeup <- ggarrange(T, P, ncol = 1, nrow = 2, legend = "bottom", common.legend = TRUE)
-oct_closeup
+#oct_closeup <- ggarrange(T, P, ncol = 1, nrow = 2, legend = "bottom", common.legend = TRUE)
+#oct_closeup
 
 
-########################################################################################
-# donations count | important events (by type)
-A <- data_k7 %>%
-  filter(date >= ymd("2022-02-10")) %>%
-  ggplot(aes(x = date, y = don_count)) +
-  geom_line() +
-  geom_vline(data = events, aes(xintercept = date, color = coloring), size = 1, alpha = 0.5) +
-  scale_color_manual(values = c(`1` = "red", `0` = "turquoise")) +
-  xlab("Time") +
-  ylab("Donation count, by type") +
-  facet_wrap(~type) +
-  theme(legend.position = "none") +
-  NULL
-A
+##########################################################################################################
+#Plotting events against total donations and explanatory variables
 
-# donations count | important events | close-up (by type)
-B <- data_res %>%
-  filter(date <= ymd("2022-10-17") & date >= ymd("2022-10-01") & type == "Ukrainian") %>%
-  ggplot(aes(x = date, y = don_count_des)) +
-  geom_line(aes(color=type)) +
-  new_scale_color() +
-  geom_vline(data = events, aes(xintercept = date, color = coloring), linewidth = 1, alpha = 0.5) +
-  scale_color_manual(values = c(`1` = "red", `0` = "turquoise"), guide = "none") +
-  xlab("Time") +
-  ylab("Donation count, by type") +
-  theme(legend.position = "none") +
-  NULL
-B
-
-# donations value | important events (by type)
-C <- data_k7 %>%
-  filter(date >= ymd("2022-02-10")) %>%
-  ggplot(aes(x = date, y = don_mean_usd)) +
-  geom_line() +
-  geom_vline(data = events, aes(xintercept = date, color = coloring), size = 1, alpha = 0.5) +
-  scale_color_manual(values = c(`1` = "red", `0` = "turquoise")) +
-  xlab("Time") +
-  ylab("Average donation, by type") +
-  facet_wrap(~type) +
-  theme(legend.position = "none") +
-  NULL
-C
-
-# donations value | important events | close-up (by type)
-D <- data_res %>%
-  filter(date <= ymd("2022-10-17") & date >= ymd("2022-10-01") & type == "Ukrainian") %>%
-  ggplot(aes(x = date, y = don_mean_usd_des)) +
-  geom_line(aes(color=type)) +
-  new_scale_color() +
-  geom_vline(data = events, aes(xintercept = date, color = coloring), size = 1, alpha = 0.5) +
-  scale_color_manual(values = c(`1` = "red", `0` = "turquoise"), guide = "none") +
-  xlab("Time") +
-  ylab("Average donation, by type") +
-  # theme(legend.position = "none") +
-  NULL
-D
-
-#Merge together
-
-plot_events <- ggarrange(A, C, ncol = 1, nrow = 2)
-plot_events
-
-plot_closeup <- ggarrange(B, D, ncol = 2, nrow = 1, legend = "bottom", common.legend = TRUE)
-plot_closeup
-
-
-
-####################################################################
-#RQ1################################################################
-####################################################################
-
-create_event_plot <- \(.data, var_dep, var_ind, ylab = "") {
+create_overlay <- \(.data, var_dep, ylab = "") {
   .data %>%
-    ggplot(aes(x = date)) +
-    geom_line(aes(y = {{var_dep}})) +
-    geom_line(aes(y = { { var_ind } }), color = "brown") +
+    ggplot(aes(x = date, y = { { var_dep } })) +
+    geom_line(linewidth=0.8) +
+    new_scale_color() +
     geom_vline(data = events, aes(xintercept = date, color = coloring), size = 2, alpha = 0.5) +
-    scale_color_manual(values = c(`1` = "red", `0` = "green")) +
-    xlab("Time") +
+    geom_label_repel(data=annotate2, 
+                     aes(label=event_name), size = 5,
+                     box.padding = unit(1, "lines"),
+                     direction = "both",
+                     segment.color = "grey",
+                     nudge_x= 10,
+                     nudge_y = 10) +
+    scale_color_manual(values = c(`1` = "red", `0` = "dark green")) +
     ylab(ylab) +
-    theme(legend.position = "none") +
+    xlab(NULL) +
+    xlim("2022-02-10", "2022-10-31") +
+    scale_x_date(date_labels = "%d/%m", date_breaks = "1 month", minor_breaks = "2 weeks") +
+    theme_classic() +
+    theme(legend.spacing.y = unit(0, "mm"), 
+          legend.position = "none",
+          panel.border = element_rect(color = "black", linewidth = 0.2, fill=NA),
+          panel.grid.major = element_blank(),
+          axis.text.x = element_text(angle = 45, hjust=1, colour = "black", size = 9),
+          axis.text.y = element_text(hjust=1, colour = "black", size = 7),
+          axis.title = element_text(face="bold", size = 20)) +
     NULL
 }
 
-#donation *count for Ukrainian type against important events & air raid siren count
-#full
-#data_k7 %>%
-#  filter(type == "Ukrainian") %>%
-#  filter(date >= ymd("2022-02-10")) %>%
-#  create_event_plot(don_count, siren_count, "n Ukrainian donations, air raid sirens")
 
-#April only
-#data_k2 %>%
-#  filter(type == "Ukrainian") %>%
-#  filter(date <= ymd("2022-04-30") & date >= ymd("2022-04-01")) %>%
-#  create_event_plot(don_count, siren_count, "n Ukrainian donations, air raid sirens")
-
-#donation *count for Foreign type against important events & tweet count (total)
-#data_k7 %>%
-#  filter(type == "Foreign") %>%
-#  filter(date >= ymd("2022-02-10")) %>%
-#  create_event_plot(don_count, tweet_count, "n Foreign donations, tweets")
-
-#donation *count for Crypto type against important events & tweet count (total)
-#data_k7 %>%
-#  filter(type == "Crypto") %>%
-#  filter(date >= ymd("2022-02-10")) %>%
-#  create_event_plot(don_count, tweet_count, "n Crypto donations, tweets")
-
-####################################################################
-
-#donation *value for Ukrainian type against important events & air raid siren count
-#full
-data_res %>%
-  filter(type == "Ukrainian") %>%
-  filter(date >= ymd("2022-02-10")) %>%
-  create_event_plot(don_mean_usd_des, siren_count, "mean Ukrainian donations, air raid sirens")
-
-#April only
-data_res %>%
-  filter(type == "Ukrainian") %>%
-  filter(date <= ymd("2022-04-30") & date >= ymd("2022-04-01")) %>%
-  create_event_plot(don_mean_usd_des, siren_count, "mean Ukrainian donations, air raid sirens")
-
-#donation *value for Foreign type against important events & tweet count (total)
-data_k7 %>%
-  filter(type == "Foreign") %>%
-  filter(date >= ymd("2022-02-10")) %>%
-  create_event_plot(don_mean_usd, tweet_count, "mean Foreign donations, air raid sirens")
-
-#donation *value for Crypto type against important events & tweet count (total)
-data_k7 %>%
-  filter(type == "Crypto") %>%
-  create_event_plot(don_mean_usd, tweet_count, "mean Crypto donations, air raid sirens")
-
-####################################################################
-#RQ2################################################################
-####################################################################
-
-create_emotion_plot <- \(.data, var_dep, ylab = "") {
-  .data %>%
-    ggplot(aes(x = date, y = { { var_dep } })) +
-    geom_line() +
-    geom_vline(data = events, aes(xintercept = date, color = coloring), size = 2, alpha = 0.5) +
-    scale_color_manual(values = c(`1` = "red", `0` = "turquoise")) +
-    xlab("Time") +
-    ylab(ylab) +
-    theme(legend.position = "none")
-}
-
-data_k7_sum <- data_k7 %>%
-  group_by(date) %>%
-  summarise(don_count = sum(don_count), don_mean_usd = sum(don_count * don_mean_usd) / sum(don_count), siren_count = unique(siren_count), tweet_count = unique(tweet_count))
-
-#all time donation *count against important events, by emotion (blue - neg, red - pos) + siren_count in brown
+#total count | events | tweet count
 data_k7_sum %>%
   filter(date >= ymd("2022-02-10")) %>%
-  create_emotion_plot(don_count, "log of Total donation count, air raid siren count") +
-  geom_line(aes(y = siren_count), color = "brown")
+  create_overlay(don_count, "log of Total donation count") +
+  #geom_line(aes(y = d_tweet_count), linewidth = 0.8, color = "brown") +
+  NULL
 
-#all time donation *count against important events, by emotion (blue - neg, red - pos) + tweet_count in blue
+
+# value across types | events | tweet count
 data_k7_sum %>%
   filter(date >= ymd("2022-02-10")) %>%
-  create_emotion_plot(don_count, "log of Total donation count, tweet count") +
-  geom_line(aes(y = tweet_count), color = "blue")
+  create_overlay(don_mean_usd, " log of Mean donation value") +
+  #geom_line(aes(y = d_tweet_count),linewidth = 0.8, color = "brown")+
+  NULL
 
-#Both positive and negative events immediately increase donation count?
-
-#all time donation *value against important events, by emotion
-data_k7_sum %>%
-  filter(date >= ymd("2022-02-10")) %>%
-  create_emotion_plot(don_mean_usd, "log of Average donation")
-
-#Positive events cause decrease in value, negative events cause increase in value?
-
-###################################################################################################
-
-data_k2_sum <- data_k2 %>%
-  group_by(date) %>%
-  summarise(don_count = sum(don_count), don_mean_usd = sum(don_count * don_mean_usd) / sum(don_count))
-
-# donation *count around Kerch (positive) & response strikes (negative)
-data_k2_sum %>%
-  filter(date <= ymd("2022-10-20") & date >= ymd("2022-09-29")) %>%
-  create_emotion_plot(don_count, "log(Donation count)")
-
-# donation *count around Vinnitsya (negative)
-data_k2_sum %>%
-  filter(date <= ymd("2022-07-25") & date >= ymd("2022-07-04")) %>%
-  create_emotion_plot(don_count, "log(Donation count)")
-
-# donation *value around Kerch (positive) & response strikes (negative)
-data_k2_sum %>%
-  filter(date <= ymd("2022-10-20") & date >= ymd("2022-09-29")) %>%
-  create_emotion_plot(don_mean_usd, "log(Average donation)")
-
-# donation *value around Vinnitsya (negative)
-data_k2_sum %>%
-  filter(date <= ymd("2022-07-25") & date >= ymd("2022-07-04")) %>%
-  create_emotion_plot(don_mean_usd, "log(Average donation)")
-
-####################################################################
-#RQ3################################################################
-####################################################################
-
-create_emotion_plot_type <- \(.data, var_dep, ylab = "") {
-  .data %>%
-    ggplot(aes(x = date, y = { { var_dep } })) +
-    geom_line() +
-    geom_vline(data = events, aes(xintercept = date, color = coloring), size = 2, alpha = 0.5) +
-    scale_color_manual(values = c(`1` = "red", `0` = "green")) +
-    xlab("Time") +
-    ylab(ylab) +
-    facet_wrap(~ type, ncol = 1) +
-    theme(legend.position = "none")
-}
-
-#all time donation *count against important events, *positive emotion, by type
-data_k7 %>%
-  filter(date >= ymd("2022-02-10")) %>%
-  create_emotion_plot_type(don_count, "log of Donation count, by type")
-
-#all time donation *value against important events, *negative emotion, by type
-data_k7 %>%
-  filter(date >= ymd("2022-02-10")) %>%
-  create_emotion_plot_type(don_mean_usd, "log of Average donation, by type")
 

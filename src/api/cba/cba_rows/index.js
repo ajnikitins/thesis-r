@@ -32,7 +32,7 @@ puppeteer.launch({ headless: false, executablePath: executablePath() }).then(asy
   console.log(`Last found page is ${lastPage}`)
 
   // Start main loop
-  while (lastPage < 64384) {
+  while (lastPage < 15113) {
     // Start navigation
     console.log(`Navigating to savelife.in.ua`)
     await page.goto('https://savelife.in.ua/reporting')
@@ -46,7 +46,7 @@ puppeteer.launch({ headless: false, executablePath: executablePath() }).then(asy
     let queriedPage = lastPage + 1;
 
     // Main request loop
-    for (; queriedPage <=  64384; queriedPage++) {
+    for (; queriedPage <=  15113; queriedPage++) {
       console.log(`Requesting page ${queriedPage}`)
 
       // Try to request a page, if it errors, then assume the Cloudflare timer ended, export the collected rows and refresh
