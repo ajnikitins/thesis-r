@@ -13,13 +13,22 @@ eth_addresses <- read.csv("data/crypto/addresses.csv", header = TRUE, sep = ",")
 
 # Query CovalentHQ API to get transactions
 get_eth_data <- \(address) {
-  print(glue("Loading txs for {address}"))
+  eth_txs <- list()
 
-  eth_res <- GET("https://api.covalenthq.com/",
-                 path = glue("v1/1/address/{address}/transactions_v2/"),
-                 query = list(key = Sys.getenv("COVALENT_API_KEY"), "no-logs" = "true", "page-size" = 99999))
+  repeat {
+    print(glue("Loading txs for {address}"))
+    eth_res <- GET("https://api.covalenthq.com/",
+                   path = glue("v1/1/address/{address}/transactions_v2/"),
+                   query = list(key = Sys.getenv("COVALENT_API_KEY"), "page-size" = 500))
+    eth_data <- content(eth_res, "parsed")
+    eth_txs <- c(eth_txs, eth_data$data$items)
 
-  eth_data <- fromJSON(rawToChar(eth_res$content))
+    if (!eth_data$data$pagination$has_more) break
+  }
+
+  eth_data$data$items <- eth_txs
+
+  eth_data
 }
 
 eth_data <- lapply(eth_addresses$address, get_eth_data)
