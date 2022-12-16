@@ -1,9 +1,10 @@
 .httr-oauth
 .env
-/data/
-/old/
-/pics/
-/logs/
+data/
+data_manual/
+old/
+pics/
+logs/
 .Renviron
 
 # Created by https://www.toptal.com/developers/gitignore/api/intellij+all
