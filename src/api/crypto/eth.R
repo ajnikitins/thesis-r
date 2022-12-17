@@ -13,49 +13,75 @@ eth_addresses <- read.csv("data/crypto/addresses.csv", header = TRUE, sep = ",")
 
 # Query CovalentHQ API to get transactions
 get_eth_data <- \(address) {
-  eth_txs <- list()
+  page <- 0
 
   repeat {
-    print(glue("Loading txs for {address}"))
+    print(glue("Loading page {page} of txs for {address}"))
     eth_res <- GET("https://api.covalenthq.com/",
                    path = glue("v1/1/address/{address}/transactions_v2/"),
-                   query = list(key = Sys.getenv("COVALENT_API_KEY"), "page-size" = 500))
-    eth_data <- content(eth_res, "parsed")
-    eth_txs <- c(eth_txs, eth_data$data$items)
+                   query = list(key = Sys.getenv("COVALENT_API_KEY"), "page-size" = 500, "page-number" = page, "block-signed-at-asc" = TRUE))
+    eth_data_text <- content(eth_res, "text", encoding = "UTF-8")
+    write(eth_data_text, glue("data_manual/crypto/eth/{address}_{page}.json"))
 
-    if (!eth_data$data$pagination$has_more) break
+    if(str_detect(eth_data_text, fixed('error":true'))) {
+      warning("Failed to get data, try a smaller page size; retrying...")
+    } else if (str_detect(eth_data_text, fixed("504: Gateway time-out"))) {
+      warning("Gateway timeout; Sleeping for 10 seconds & retrying...")
+      Sys.sleep(10)
+    } else if (!str_detect(eth_data_text, fixed('has_more":true'))) {
+      message("Done! Moving on...")
+      break
+    } else {
+      page <- page + 1
+    }
   }
-
-  eth_data$data$items <- eth_txs
-
-  eth_data
 }
 
-eth_data <- lapply(eth_addresses$address, get_eth_data)
+# Gather ETH txs data into a single data frame
+load_eth_data <- \() {
+  files <- list.files("data_manual/crypto/eth", full.names = TRUE)
 
-saveRDS(eth_data, "data/crypto/data_eth.RDS")
+  data_eth_raw <- map(files, read_json)
 
-# eth_data <- readRDS("data/crypto/data_eth.RDS")
+  data_eth <- reduce(data_eth_raw, \(acc, part) {
+    address <- part$data$address
+    address_name <- eth_addresses$name[which(eth_addresses$address == address)]
 
-# Collect txs data into a single data frame
-eth_data_txs_raw <- lapply(eth_data, \(set) {
-  txs <- set$data$items
-  if (length(txs) == 0) return(NULL)
+    if (length(part$data$items) == 0) {
+      return(acc)
+    }
 
-  txs$time <- as_datetime(txs$block_signed_at)
-  txs$address <- set$data$address
-  txs$name <- (subset(eth_addresses, address == set$data$address))[["name"]]
+    txs <- part$data$items %>%
+      tibble(txs = .) %>%
+      unnest_wider(txs) %>%
+      mutate(address = address,
+             name = address_name,
+             to_address = tolower(to_address),
+             time = ymd_hms(block_signed_at),
+             .keep = "unused")
 
-  txs
-}) %>%
-  reduce(rbind)
+    acc <- bind_rows(acc, txs)
+  }, .init = NULL)
 
-eth_data_txs <- eth_data_txs_raw %>%
+  data_eth %>%
+    arrange(name, time)
+}
+
+# Collect ETH data
+walk(eth_addresses$address, get_eth_data)
+
+# Load ETH data
+data_eth <- load_eth_data()
+saveRDS(data_eth, "data/crypto/data_eth.RDS")
+
+# data_eth <- readRDS("data/crypto/data_eth.RDS")
+
+data_eth_txs <- data_eth %>%
   mutate(type = "Ethereum") %>%
   # Filter to incoming transactions
-  filter(tolower(to_address) == address) %>%
+  filter(to_address == address) %>%
   # Potentially filter out token transactions?
   filter(value_quote > 0) %>%
   select(type, name, time, value_usd = value_quote)
 
-saveRDS(eth_data_txs, "data/crypto/data_eth_txs.RDS")
+saveRDS(data_eth_txs, "data/crypto/data_eth_txs.RDS")
