@@ -49,11 +49,9 @@ data_complete <- data_donations %>%
   left_join(data_emotions, by = "date") %>%
   left_join(data_sentiments, by = "date") %>%
   left_join(data_factiva, by = "date") %>%
-  left_join(data_severity, by = "date")
-
-
-data_complete_d <- data_complete %>%
+  left_join(data_severity, by = "date") %>%
+  mutate(date = as_date(date)) %>%
   mutate(across(c(-date, -type, -starts_with("event"), -siren_kyiv), ~ . - lag(.), .names = "d_{.col}"),
          across(c(-date, -type, -starts_with("event"), -siren_kyiv, -starts_with("d_")), ~ log(.) - log(lag(.)), .names = "dlog_{.col}"))
 
-saveRDS(data_complete_d, "data/data_complete.RDS")
+saveRDS(data_complete, "data/data_complete.RDS")
