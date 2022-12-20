@@ -76,12 +76,39 @@ saveRDS(data_eth, "data/crypto/data_eth.RDS")
 
 # data_eth <- readRDS("data/crypto/data_eth.RDS")
 
+# Get all transactions with log events (assume those are token transactions)
+data_eth_tok_full <- data_eth %>%
+  filter(!map_lgl(log_events, is.null))
+
+write_json(data_eth_tok_full, "data/crypto/data_eth_tok_full.json")
+
+# Process token transactions
+data_eth_tok <- data_eth_tok_full %>%
+  # filter(value > 0) %>%
+  select(time, name, address, tx_hash, from_address, to_address, value, value_quote, log_events) %>%
+  unnest_longer(log_events) %>%
+  # hoist(log_events, log_offset = "log_offset", contract_decimals = "sender_contract_decimals", contract_name = "sender_name", contract_ticker = "sender_contract_ticker_symbol", contract_address = "sender_address", "decoded") %>%
+  hoist(log_events, "log_offset", "sender_contract_decimals", "sender_name", "sender_contract_ticker_symbol", "sender_address", "decoded") %>%
+  select(-log_events) %>%
+  # hoist(decoded, contract_action = "name", contract_action_params = "params") %>%
+  hoist(decoded, decoded_action = "name", decoded_action_signature = "signature", decoded_action_params = "params") %>%
+  # select(-decoded) %>%
+  I()
+
+# # Get unique examples of contract actions
+# tmp <- data_eth_tok %>%
+#   distinct(decoded_action, decoded_action_signature, .keep_all = TRUE) %>%
+#   unnest_longer(decoded_action_params) %>%
+#   hoist(decoded_action_params, param_name = "name", param_type = "type", param_value = "value") %>%
+#   select(-decoded_action_params)
+
 data_eth_txs <- data_eth %>%
-  mutate(type = "Ethereum") %>%
+  mutate(currency = "Ethereum",
+         value = as.numeric(value) / 10^18) %>%
   # Filter to incoming transactions
-  filter(to_address == address) %>%
+  filter(from_address != address) %>%
   # Potentially filter out token transactions?
   filter(value_quote > 0) %>%
-  select(type, name, time, value_usd = value_quote)
+  select(currency, name, time, value, value_usd = value_quote)
 
 saveRDS(data_eth_txs, "data/crypto/data_eth_txs.RDS")
