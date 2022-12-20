@@ -32,8 +32,13 @@ data_cba_rows <- data_cba_rows_raw %>%
 
 saveRDS(data_cba_rows, "data/cba/data_cba_rows.RDS")
 
-data_cba_counts_2 <- data_cba_rows %>%
-  group_by(date = floor_date(date, unit = "days")) %>%
-  summarise(count = n()) %>%
-  left_join(data_cba_counts, by = "date") %>%
-  mutate(d = count.y - count.x)
+# data_cba_rows <- readRDS("data/cba/data_cba_rows.RDS")
+
+data_cba_rows_usd <- data_cba  %>%
+  mutate(currency = if_else(currency == "PLZ", "PLN", currency),
+         date = floor_date(date, unit = "day"),
+         value = as.numeric(amount),
+         value_usd = convert_currencies(as.numeric(amount), from = currency, to = "USD", date = floor_date(date, unit = "day"))) %>%
+  select(-amount, -comment, -source)
+
+saveRDS(data_cba_rows_usd, "data/cba/data_cba_rows_usd.RDS")
