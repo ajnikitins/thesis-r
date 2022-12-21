@@ -1,69 +1,47 @@
 library(tidyverse)
-library(GGally)
+library(glue)
+library(systemfit)
 
-# Find outliers
-data <- readRDS("data/data_complete.RDS")
+# Load data
+data_raw <- readRDS("data/data_complete.RDS")
 
-## Seems that Crypto has 3 days with outliers
-data_outliers <- data %>%
-  filter(don_mean_usd > 25000)
+# Process data for regressions
+data <- data_raw %>%
+  # Filter out beginning of war
+  filter(date >= "2022-03-10") %>%
+  # Pivot out separate counts, total & mean values
+  pivot_wider(names_from = type, values_from = contains("don")) %>%
+  mutate(weekday = factor(weekdays(date), levels = c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")))
 
-data_log <- data %>%
-  group_by(type) %>%
-  mutate(don_total_usd = don_mean_usd * don_count,
-    don_total_usd_log = log(don_total_usd),
-    don_mean_usd_log = log(don_mean_usd),
-         don_count_log = log(don_count))
+# Get all dependent variables
+dep_vars <- names(data_raw)[str_detect(names(data_raw), "don")] %>%
+  str_extract("don_.*") %>%
+  unique()
 
-data_log %>%
-  filter(don_mean_usd > 0) %>%
-  filter(date > "2022-02-22") %>%
-  select(date, type, don_mean_usd, don_mean_usd_log) %>%
-  pivot_longer(-c(date, type), names_to = "var", values_to = "val") %>%
-  ggplot(aes(x = val)) +
-  geom_density() +
-  facet_wrap(~ var + type, scale = "free")
+# Get all types of variable forms
+var_forms <- names(data_raw)[str_detect(names(data_raw), "don")] %>%
+  str_match("(.*)_don") %>%
+  `[`(, 2) %>%
+  unique()
 
-data_log %>%
-  select(date, type, don_count, don_count_log) %>%
-  pivot_longer(-c(date, type), names_to = "var", values_to = "val") %>%
-  ggplot(aes(x = val)) +
-  geom_density() +
-  facet_wrap(~ var + type, scale = "free")
+mods_template <- expand_grid(dep_vars, var_forms)
 
-data_log %>%
-  select(date, type, don_total_usd, don_total_usd_log) %>%
-  pivot_longer(-c(date, type), names_to = "var", values_to = "val") %>%
-  ggplot(aes(x = val)) +
-  geom_density() +
-  facet_wrap(~ var + type, scale = "free")
+# Generic equation
+get_eq <- \(dep_var, indep_var, var_form = NA, types = c("Ukrainian", "Foreign", "Crypto"), deseasonalise = TRUE) {
+  if (!is.na(var_form)) {
+    dep_var <- glue("{var_form}_{dep_var}")
+    indep_var <- map(indep_var, ~ if (!str_detect(., "_dum")) glue("{var_form}_{.}") else .)
+  }
 
+  if (deseasonalise) {
+    indep_var <- c(indep_var, "weekday")
+  }
 
-# Plots
-# Visual check
-data %>%
-  filter(type == "Ukrainian") %>%
-  select(-date, -type) %>%
-  ggpairs()
+  indep_var <- paste(indep_var, collapse = "+")
+  map(types, ~ as.formula(glue("{dep_var}_{.} ~ {indep_var}")))
+}
 
-data %>%
-  filter(type == "Foreign") %>%
-  select(-date, -type) %>%
-  ggpairs()
-
-data %>%
-  filter(type == "Crypto") %>%
-  select(-date, -type) %>%
-  ggpairs()
-
-data %>%
-  filter(don_mean_usd > 0) %>%
-  ggplot(aes(x = date, y = don_mean_usd)) +
-  geom_line() +
-  facet_wrap(~ type, scales = "free_y")
-
-
-data %>%
-  ggplot(aes(x = date, y = d_don_mean_usd)) +
-  geom_line() +
-  facet_wrap(~ type, scales = "free_y")
+# On event dummies
+mods_events <- mods_template %>%
+  mutate(eqs = map2(dep_vars, var_forms, get_eq, indep_var = c("event_positive_dum", "event_negative_dum")),
+         mods = map(eqs, systemfit, method = "SUR", data = data))
