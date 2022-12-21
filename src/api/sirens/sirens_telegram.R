@@ -41,7 +41,7 @@ data_sirens <- expand(data_sirens_oblast,
             siren_mean_duration = sum(siren_total_duration) / sum(siren_count),
             siren_mean_duration = if_else(is.nan(siren_mean_duration), 0, siren_mean_duration),
             siren_prop = sum(siren_has) / n(),
-            siren_kyiv = if_else(any(siren_has == 1 & (region == "Київ" | region == "Київська область")), 1, 0)) %>%
+            siren_kyiv_dum = if_else(any(siren_has == 1 & (region == "Київ" | region == "Київська область")), 1, 0)) %>%
   right_join(expand(., date = seq(dmy("01-01-2022"), max(date), by = 1)), by = "date") %>%
   mutate(across(-date, ~ replace_na(., 0))) %>%
   arrange(date)
