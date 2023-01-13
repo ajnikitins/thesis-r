@@ -20,17 +20,17 @@ library(readxl)
 #   arrange(date)
 
 # From https://www.statista.com/statistics/1296924/ukraine-war-casualties-daily/
-data_civ_cas <- read_excel("data/severity/UN_civ_casualties.xlsx") %>%
+data_sev_cas_civ <- read_excel("data/severity/UN_civ_casualties.xlsx") %>%
   transmute(date = mdy(date),
-         cas_civ = killed + injured) %>%
-  add_row(date = dmy("24-02-2022"), cas_civ = 0, .before = 1) %>%
-  mutate(cas_civ = cas_civ - lag(cas_civ)) %>%
-  right_join(expand(., date = full_seq(date, 1)), by = "date") %>%
+            sev_cas_civ_count = killed + injured) %>%
+  add_row(date = dmy("24-02-2022"), sev_cas_civ_count = 0, .before = 1) %>%
+  mutate(sev_cas_civ_count = sev_cas_civ_count - lag(sev_cas_civ_count)) %>%
+  right_join(tidyr::expand(., date = full_seq(date, 1)), by = "date") %>%
   arrange(date) %>%
-  fill(cas_civ) %>%
-  mutate(cas_civ = replace_na(cas_civ, 0))
+  fill(sev_cas_civ_count) %>%
+  mutate(sev_cas_civ_count = replace_na(sev_cas_civ_count, 0))
 
-saveRDS(data_civ_cas, "data/severity/data_civ_cas.RDS")
+saveRDS(data_sev_cas_civ, "data/severity/data_civ_cas.RDS")
 
 ## Russian casualties
 get_data_rus_cas <- \(start, end) {
@@ -77,27 +77,27 @@ get_data_rus_cas <- \(start, end) {
     summarize(value = sum(value), .groups = "drop")
 }
 
-data_rus_cas <- get_data_rus_cas(start = Sys.getenv("RUS_CAS_START"), end = Sys.getenv("RUS_CAS_END"))
+data_sev_cas_rus <- get_data_rus_cas(start = Sys.getenv("RUS_CAS_START"), end = Sys.getenv("RUS_CAS_END"))
 
-saveRDS(data_rus_cas, "data/severity/data_rus_cas.RDS")
+saveRDS(data_sev_cas_rus, "data/severity/data_rus_cas.RDS")
+
+data_sev_cas_rus_agg <- data_sev_cas_rus %>%
+  filter(type == "Military personnel") %>%
+  select(-type, sev_cas_rus_mil_count = value)
 
 ## Conflict events
 # From https://acleddata.com/ukraine-crisis/#data
-data_confl_evs <- read_excel("data/severity/Ukraine_Black_Sea_2020_2022_Nov04.xlsx") %>%
+data_sev_confl_evs_count <- read_excel("data/severity/Ukraine_Black_Sea_2020_2022_Nov04.xlsx") %>%
   select(date = EVENT_DATE) %>%
   group_by(date) %>%
-  summarise(confl_evs = n())
+  summarise(sev_confl_evs_count = n())
 
-saveRDS(data_confl_evs, "data/severity/data_confl_evs.RDS")
+saveRDS(data_sev_confl_evs_count, "data/severity/data_confl_evs.RDS")
 
-data_cas_rus_agg <- data_rus_cas %>%
-  filter(type == "Military personnel") %>%
-  select(-type, cas_rus_mil = value)
-
-data_severity <- data_civ_cas %>%
-  select(date, cas_civ) %>%
-  left_join(data_cas_rus_agg, by = "date") %>%
-  left_join(data_confl_evs, by = "date") %>%
+data_severity <- data_sev_cas_civ %>%
+  select(date, sev_cas_civ_count) %>%
+  left_join(data_sev_cas_rus_agg, by = "date") %>%
+  left_join(data_sev_confl_evs_count, by = "date") %>%
   filter(date <= "2022-10-31")
 
 saveRDS(data_severity, "data/severity/data_severity.RDS")
