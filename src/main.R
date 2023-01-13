@@ -11,7 +11,11 @@ data <- data_raw %>%
   filter(date >= "2022-03-10") %>%
   # Pivot out separate counts, total & mean values
   pivot_wider(names_from = type, values_from = contains("don")) %>%
+  # Generate weekday dummies
   mutate(weekday = factor(weekdays(date), levels = c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")))
+
+# Get all variables
+vars <- names(data_raw)
 
 # Get all dependent variables
 dep_vars <- names(data_raw)[str_detect(names(data_raw), "don")] %>%
@@ -24,7 +28,40 @@ var_forms <- names(data_raw)[str_detect(names(data_raw), "don")] %>%
   `[`(, 2) %>%
   unique()
 
-mods_template <- expand_grid(dep_vars, var_forms)
+# List of all independent variables for all model specifications
+# `name` = `independent variables`
+mods_specifications <- list(
+  "events" = "event_.*_dum",
+  "sirens" = "siren_.*",
+  # "tweets_all" = c("siren_.*", "tweet_count", "factiva_count",
+  #                  "(emot|sent)_count_.*", "(emot|sent)_prop_(?!mixed).*",
+  #                  "cas_civ", "cas_rus_mil", "confl_evs"),
+  # "tweets_counts" = c("siren_.*",
+  #                     "tweet_count",
+  #                     "factiva_count",
+  #                     "(emot|sent)_count_.*",
+  #                     "cas_civ",
+  #                     "cas_rus_mil",
+  #                     "confl_evs"),
+  "tweets_props" = c("siren_.*", "tweet_count", "factiva_count",
+                     "(emot|sent)_prop_(?!mixed).*",
+                     "sev_.*")
+) %>% modify(\(patterns) {
+  reduce(patterns, \(acc, pattern) {
+    # Replace patterns with actual variables according to RegExr
+    # Including ^ makes sure only level variable forms are included as those are handled by `get_eq`
+    append(acc, str_subset(vars, paste0("^", pattern)))
+  }, .init = list())
+}) %>%
+  # Reformat the list into a dataframe
+  stack() %>%
+  data.frame() %>%
+  rename(specification_name = ind, indep_vars = values) %>%
+  group_by(specification_name) %>%
+  summarise(indep_vars = list(indep_vars), .groups = "drop")
+
+# Generate template variable setup for all models
+mods_template <- expand_grid(dep_vars, var_forms, mods_specifications)
 
 # Generic equation
 get_eq <- \(dep_var, indep_var, var_form = NA, types = c("Ukrainian", "Foreign", "Crypto"), deseasonalise = TRUE) {
@@ -41,7 +78,17 @@ get_eq <- \(dep_var, indep_var, var_form = NA, types = c("Ukrainian", "Foreign",
   map(types, ~ as.formula(glue("{dep_var}_{.} ~ {indep_var}")))
 }
 
-# On event dummies
-mods_events <- mods_template %>%
-  mutate(eqs = map2(dep_vars, var_forms, get_eq, indep_var = c("event_positive_dum", "event_negative_dum")),
-         mods = map(eqs, systemfit, method = "SUR", data = data))
+# Run models according to specifications
+mods <- mods_template %>%
+  mutate(eqs = pmap(list(dep_vars, indep_vars, var_forms), get_eq)) %>%
+  mutate(mods = map(eqs, systemfit, method = "SUR", data = data))
+
+# Code for testing individual models
+# dep_var <- "don_count"
+# var_form <- "d"
+# indep_vars <- mods_template %>%
+#   filter(dep_vars == dep_va & var_forms == var_form & specification_name == "tweets_counts") %>%
+#   pull(indep_vars) %>%
+#   `[[`(1)
+# eqs <- get_eq(dep_var = dep_var, var_form = var_form, indep_var = indep_vars)
+# model <- systemfit(eqs, method = "SUR", data = data)
