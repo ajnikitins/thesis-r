@@ -67,7 +67,11 @@ mods_template <- expand_grid(dep_vars, var_forms, mods_specifications)
 get_eq <- \(dep_var, indep_var, var_form = NA, types = c("Ukrainian", "Foreign", "Crypto"), deseasonalise = TRUE) {
   if (!is.na(var_form)) {
     dep_var <- glue("{var_form}_{dep_var}")
-    indep_var <- map(indep_var, ~ if (!str_detect(., "_dum")) glue("{var_form}_{.}") else .)
+    indep_var <- map(indep_var, ~ {
+        if (!str_detect(., "_dum") & (var_form == "log" & any(str_detect(., c("count", "total", "value", "mean"))))) {
+          glue("{var_form}_{.}")}
+        else .
+    })
   }
 
   if (deseasonalise) {
