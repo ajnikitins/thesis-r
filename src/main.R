@@ -3,6 +3,8 @@ library(glue)
 library(systemfit)
 library(texreg)
 
+WEEKDAYS <- c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+
 # Load data
 data_raw <- readRDS("data/data_complete.RDS")
 
@@ -13,7 +15,7 @@ data <- data_raw %>%
   # Pivot out separate counts, total & mean values
   pivot_wider(names_from = type, values_from = contains("don")) %>%
   # Generate weekday dummies
-  mutate(weekday = factor(weekdays(date), levels = c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")))
+  mutate(weekday = factor(weekdays(date), levels = WEEKDAYS))
 
 # Get all variables
 vars <- names(data_raw)
@@ -122,18 +124,27 @@ mod_tables <- mods %>%
                                       tweets_props = FALSE,
                                       TRUE
          )),
+         table_variable_names = list(switch(as.character(specification_name),
+                                            events = c("(Intercept)", "Positive events", "Negative events", WEEKDAYS[-1]),
+                                            sirens = c("(Intercept)", "Sirens", "Siren duration", "Share of Ukraine", "In Kyiv?", WEEKDAYS[-1]),
+                                            tweets_props = c("(Intercept)", "Sirens", "Siren duration", "Share of Ukraine", "In Kyiv?",
+                                                       "Tweets", "News articles",
+                                                       "Joy", "Anger", "Surprise", "Trust", "Fear", "Anticipation", "Sadness", "Disgust", "Positive", "Negative",
+                                                       "Civilian casualties", "Russian mil. casualties", "Conflict events", WEEKDAYS[-1])
+         )),
          table_caption_var_forms = list(switch(as.character(var_forms), `level` = "Levels", log = "Logs", d = "First-differences", dlog = "Log-differences")),
          table_caption_specifications = list(switch(as.character(specification_name),
                                                     events = "positive and negative events",
                                                     sirens = "air raid sirens",
-                                                    tweets_props = "air raid sirens, tweet & media article counts, proportions of tweet emotions, and war severity"
+                                                    tweets_props = "air raid sirens, tweet \\& media article counts, proportions of tweet emotions, and war severity"
          )),
          table_caption = glue("{table_caption_var_forms} of donation characteristics explained by {table_caption_specifications}."),
          table_label = glue("table:{var_forms}_{specification_name}"),
          table_header_dep_vars = list(map(dep_vars, \(dep_var, var_form) ifelse(var_form == "level", dep_var, glue('{var_form}_{dep_var}')), var_forms)),
-         table_header = list(set_names(list(1:3, 4:6, 7:9), str_replace_all(glue("{table_header_dep_vars}: {specification_name}"), "_", "\\\\_")))) %>%
+         table_header = list(set_names(list(1:3, 4:6, 7:9), str_replace_all(glue("{table_header_dep_vars}"), "_", "\\\\_")))) %>%
   mutate(table = list(texreg(mods, beside = TRUE,
                              dcolumn = TRUE, booktabs = TRUE, sideways = table_sideways,
+                             custom.coef.names = table_variable_names,
                              custom.header = table_header, groups = table_groups, scalebox = table_scalebox,
                              caption = table_caption, label = table_label,
                              use.packages = FALSE)))
@@ -141,3 +152,4 @@ mod_tables <- mods %>%
 ltx_file <- paste(mod_tables$table)
 write(ltx_file, "src/latex/supplement.tex")
 tools::texi2pdf("src/latex/main.tex", clean = TRUE)
+file.copy("main.pdf", "data/tables.pdf")
