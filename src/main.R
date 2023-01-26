@@ -1,6 +1,7 @@
 library(tidyverse)
 library(glue)
 library(systemfit)
+library(texreg)
 
 # Load data
 data_raw <- readRDS("data/data_complete.RDS")
@@ -68,7 +69,7 @@ get_eq <- \(dep_var, indep_var, var_form = NA, types = c("Ukrainian", "Foreign",
   if (!is.na(var_form)) {
     dep_var <- glue("{var_form}_{dep_var}")
     indep_var <- map(indep_var, ~ {
-        if (!str_detect(., "_dum") & (var_form == "log" & any(str_detect(., c("count", "total", "value", "mean"))))) {
+        if (!str_detect(., "_dum") & (var_form == "d" | any(str_detect(., c("count", "total", "value", "mean"))))) {
           glue("{var_form}_{.}")}
         else .
     })
@@ -96,3 +97,4 @@ mods <- mods_template %>%
 #   `[[`(1)
 # eqs <- get_eq(dep_var = dep_var, var_form = var_form, indep_var = indep_vars)
 # model <- systemfit(eqs, method = "SUR", data = data)
+
