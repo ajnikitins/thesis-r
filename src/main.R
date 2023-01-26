@@ -19,7 +19,7 @@ data <- data_raw %>%
 vars <- names(data_raw)
 
 # Get all dependent variables
-dep_vars <- names(data_raw)[str_detect(names(data_raw), "don")] %>%
+dep_vars <- names(data_raw)[str_detect(names(data_raw), "(?=.*don)(?=.*count|.*usd)")] %>%
   str_extract("don_.*") %>%
   unique()
 
@@ -80,7 +80,8 @@ get_eq <- \(dep_var, indep_var, var_form = NA, types = c("Ukrainian", "Foreign",
   }
 
   indep_var <- paste(indep_var, collapse = "+")
-  map(types, ~ as.formula(glue("{dep_var}_{.} ~ {indep_var}")))
+  map(types, ~ as.formula(glue("{dep_var}_{.} ~ {indep_var}"))) %>%
+    set_names(types)
 }
 
 # Run models according to specifications
@@ -98,3 +99,14 @@ mods <- mods_template %>%
 # eqs <- get_eq(dep_var = dep_var, var_form = var_form, indep_var = indep_vars)
 # model <- systemfit(eqs, method = "SUR", data = data)
 
+tmp <- mods %>%
+  rowwise() %>%
+  mutate(table_header_depvar = str_replace_all(ifelse(is.na(var_forms), dep_vars, glue('{var_forms}_{dep_vars}')), "_", "\\\\_"),
+         table_header = list(set_names(list(1:3), paste0(table_header_depvar, ": ", specification_name)))) %>%
+  mutate(table = list(texreg(mods, beside = TRUE, dcolumn = TRUE, booktabs = TRUE, custom.header = table_header)))
+
+result <- extract(mods$mods[[1]], beside = TRUE)
+screenreg(result)
+screenreg(mods$mods[[1]],  beside = TRUE, dcolumn = FALSE, booktabs = TRUE, custom.header = list(a = 1:3))
+
+texPreview::tex_preview(tmp$table[[1]])
