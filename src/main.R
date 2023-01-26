@@ -102,7 +102,8 @@ mods <- mods_template %>%
 # Generate texreg tables from models
 mod_tables <- mods %>%
   # Var form ordering
-  mutate(var_forms = factor(var_forms, levels = unique(var_forms))) %>%
+  mutate(var_forms = replace_na(var_forms, "level"),
+         var_forms = factor(var_forms, levels = unique(var_forms))) %>%
   # Combine models into groups for the same specifications and functional forms (i.e., tables will be with all three dependent variables)
   group_by(specification_name, var_forms) %>%
   summarise(dep_vars = list(dep_vars), mods = list(mods)) %>%
@@ -114,17 +115,29 @@ mod_tables <- mods %>%
                                     tweets_props = list("Air raid sirens" = 2:5, "Media" = 6:7, "Emotion type" = 8:15, "Sentiment type" = 16:17, "War severity" = 18:20, "Seasonality" = 21:26),
          )),
          table_scalebox = list(switch(as.character(specification_name),
-                                      tweets_props = 0.6,
+                                      tweets_props = 0.65,
                                       1
          )),
          table_sideways = list(switch(as.character(specification_name),
                                       tweets_props = FALSE,
                                       TRUE
          )),
-         table_header_dep_vars = list(map(dep_vars, \(dep_var, var_form) ifelse(is.na(var_form), dep_var, glue('{var_form}_{dep_var}')), var_forms)),
+         table_caption_var_forms = list(switch(as.character(var_forms), `level` = "Levels", log = "Logs", d = "First-differences", dlog = "Log-differences")),
+         table_caption_specifications = list(switch(as.character(specification_name),
+                                                    events = "positive and negative events",
+                                                    sirens = "air raid sirens",
+                                                    tweets_props = "air raid sirens, tweet & media article counts, proportions of tweet emotions, and war severity"
+         )),
+         table_caption = glue("{table_caption_var_forms} of donation characteristics explained by {table_caption_specifications}."),
+         table_label = glue("table:{var_forms}_{specification_name}"),
+         table_header_dep_vars = list(map(dep_vars, \(dep_var, var_form) ifelse(var_form == "level", dep_var, glue('{var_form}_{dep_var}')), var_forms)),
          table_header = list(set_names(list(1:3, 4:6, 7:9), str_replace_all(glue("{table_header_dep_vars}: {specification_name}"), "_", "\\\\_")))) %>%
-  mutate(table = list(texreg(mods, beside = TRUE, dcolumn = TRUE, booktabs = TRUE, sideways = table_sideways, use.packages = FALSE, custom.header = table_header, groups = table_groups, scalebox = table_scalebox)))
+  mutate(table = list(texreg(mods, beside = TRUE,
+                             dcolumn = TRUE, booktabs = TRUE, sideways = table_sideways,
+                             custom.header = table_header, groups = table_groups, scalebox = table_scalebox,
+                             caption = table_caption, label = table_label,
+                             use.packages = FALSE)))
 
-# mod_tables$table[[10]]
-
-# screenreg(mod_tables$mods[[1]],  beside = TRUE, dcolumn = FALSE, booktabs = TRUE, custom.header = list(a = 1:3))
+ltx_file <- paste(mod_tables$table)
+write(ltx_file, "src/latex/supplement.tex")
+tools::texi2pdf("src/latex/main.tex", clean = TRUE)
