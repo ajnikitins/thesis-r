@@ -13,7 +13,8 @@ data_crypto_merged <- bind_rows(data_btc_txs, data_eth_txs) %>%
            name == "The Return Alive Foundation" ~ "CBA",
            name == "Official crypto wallets of Ukraine" ~ "United24"
          ),
-         date = as_date(floor_date(time, "day")), .keep = "unused") %>%
+         date = time,
+         .keep = "unused") %>%
   unite(currency, name, currency, sep = "_") %>%
   # Remove outliers
   # 2022-04-04 (2 >1 000 000 donations for U24 eth and btc wallets)

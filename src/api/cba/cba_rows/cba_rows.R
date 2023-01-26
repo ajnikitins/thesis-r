@@ -2,8 +2,9 @@ library(tidyverse)
 library(furrr)
 library(lubridate)
 library(rjson)
+library(priceR)
 
-plan(multisession, workers = 8)
+plan(multisession, workers = parallel::detectCores())
 
 data_cba_counts <- fromJSON(file = "src/api/cba/cba_rows/cba_counts.json") %>%
   tibble(tmp = .) %>%
@@ -34,9 +35,8 @@ saveRDS(data_cba_rows, "data/cba/data_cba_rows.RDS")
 
 # data_cba_rows <- readRDS("data/cba/data_cba_rows.RDS")
 
-data_cba_rows_usd <- data_cba  %>%
+data_cba_rows_usd <- data_cba_rows %>%
   mutate(currency = if_else(currency == "PLZ", "PLN", currency),
-         date = floor_date(date, unit = "day"),
          value = as.numeric(amount),
          value_usd = convert_currencies(as.numeric(amount), from = currency, to = "USD", date = floor_date(date, unit = "day"))) %>%
   select(-amount, -comment, -source)
