@@ -15,7 +15,8 @@ data <- data_raw %>%
   # Pivot out separate counts, total & mean values
   pivot_wider(names_from = type, values_from = contains("don")) %>%
   # Generate weekday dummies
-  mutate(weekday = factor(weekdays(date), levels = WEEKDAYS))
+  mutate(weekday = factor(weekdays(date), levels = WEEKDAYS),
+         daysSince = as.numeric(date - 19047))
 
 # Get all variables
 vars <- names(data_raw)
@@ -82,7 +83,7 @@ get_eq <- \(dep_var, indep_var, var_form = NA, types = c("Ukrainian", "Foreign",
   }
 
   indep_var <- paste(indep_var, collapse = "+")
-  map(types, ~ as.formula(glue("{dep_var}_{.} ~ {indep_var}"))) %>%
+  map(types, ~ as.formula(glue("{dep_var}_{.} ~ {indep_var} + daysSince + I(daysSince^2)"))) %>%
     set_names(types)
 }
 
@@ -105,7 +106,7 @@ mods <- mods_template %>%
 mod_tables <- mods %>%
   # Var form ordering
   mutate(var_forms = replace_na(var_forms, "level"),
-         var_forms = factor(var_forms, levels = unique(var_forms))) %>%
+         var_forms = factor(var_forms, levels = c("log", "dlog", "d", "level"))) %>%
   # Combine models into groups for the same specifications and functional forms (i.e., tables will be with all three dependent variables)
   group_by(specification_name, var_forms) %>%
   summarise(dep_vars = list(dep_vars), mods = list(mods)) %>%
@@ -125,12 +126,12 @@ mod_tables <- mods %>%
                                       TRUE
          )),
          table_variable_names = list(switch(as.character(specification_name),
-                                            events = c("(Intercept)", "Positive events", "Negative events", WEEKDAYS[-1]),
-                                            sirens = c("(Intercept)", "Sirens", "Siren duration", "Share of Ukraine", "In Kyiv?", WEEKDAYS[-1]),
+                                            events = c("(Intercept)", "Positive events", "Negative events", WEEKDAYS[-1], "DaysSince", "DaysSince^2"),
+                                            sirens = c("(Intercept)", "Sirens", "Siren duration", "Share of Ukraine", "In Kyiv?", WEEKDAYS[-1], "DaysSince", "DaysSince^2"),
                                             tweets_props = c("(Intercept)", "Sirens", "Siren duration", "Share of Ukraine", "In Kyiv?",
                                                        "Tweets", "News articles",
                                                        "Joy", "Anger", "Surprise", "Trust", "Fear", "Anticipation", "Sadness", "Disgust", "Positive", "Negative",
-                                                       "Civilian casualties", "Russian mil. casualties", "Conflict events", WEEKDAYS[-1])
+                                                       "Civilian casualties", "Russian mil. casualties", "Conflict events", WEEKDAYS[-1], "DaysSince", "DaysSince^2")
          )),
          table_caption_var_forms = list(switch(as.character(var_forms), `level` = "Levels", log = "Logs", d = "First-differences", dlog = "Log-differences")),
          table_caption_specifications = list(switch(as.character(specification_name),
