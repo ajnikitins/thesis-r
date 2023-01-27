@@ -152,4 +152,36 @@ mod_tables <- mods %>%
 ltx_file <- paste(mod_tables$table)
 write(ltx_file, "src/latex/supplement.tex")
 tools::texi2pdf("src/latex/main.tex", clean = TRUE)
-file.copy("main.pdf", "data/tables.pdf")
+file.copy("main.pdf", "data/models/tables.pdf", overwrite = TRUE)
+
+# Summary of results (sign and significance)
+mods_sum <- mods %>%
+  rowwise() %>%
+  mutate(extracted = list(extract(mods, beside = TRUE, include.rsquared = FALSE, include.adjrs = FALSE, include.nobs = FALSE)),
+         summarised = list(map(extracted, \(model) {
+           list(name = model@model.name, variable = model@coef.names, coef = model@coef, pvalues = model@pvalues) %>%
+             data.frame(row.names = NULL) %>%
+             mutate(variable = str_remove_all(variable, "^(log|d|dlog)_"),
+                    stars = case_when(pvalues < 0.001 ~ "***", pvalues < 0.01 ~ "**", pvalues < 0.05 ~ "*", pvalues < 0.1 ~ ".", TRUE ~ ""),
+                    sign = case_when(coef > 0 ~ "+", coef < 0 ~ "-"), .keep = "unused") %>%
+             mutate(coef = paste0("'", sign, stars), .keep = "unused")
+         })),
+         summarised = list(bind_rows(summarised)),
+         # summarised = list(pivot_wider(summarised, names_from = name, values_from = coef))
+         ) %>%
+  select(dep_vars, var_forms, specification_name, summarised) %>%
+  unnest_wider(summarised) %>%
+  unnest_longer(col = c(variable, name, coef)) %>%
+  # dplyr::group_by(dep_vars, name, variable, var_forms) %>%
+  # dplyr::summarise(n = dplyr::n(), .groups = "drop") %>%
+  # dplyr::filter(n > 1L)
+  pivot_wider(names_from = var_forms, values_from = coef) %>%
+  filter(variable != "(Intercept)" & variable != "daysSince" & variable != "I(daysSince^2)" & !str_detect(variable, "weekday"))
+  # arrange(dep_vars, name, specification_name)
+
+file.remove("data/models/summary.xlsx")
+mods_sum %>%
+  group_by(dep_vars, name) %>%
+  group_walk(\(data, key) {
+    xlsx::write.xlsx(data, "data/models/summary.xlsx", sheetName = glue("{key$dep_vars}_{key$name}"), append = TRUE)
+  })
