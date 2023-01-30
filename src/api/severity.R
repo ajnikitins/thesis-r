@@ -24,7 +24,7 @@ data_sev_cas_civ <- read_excel("data/severity/UN_civ_casualties.xlsx") %>%
   transmute(date = mdy(date),
             sev_cas_civ_count = killed + injured) %>%
   add_row(date = dmy("24-02-2022"), sev_cas_civ_count = 0, .before = 1) %>%
-  mutate(sev_cas_civ_count = sev_cas_civ_count - lag(sev_cas_civ_count)) %>%
+  mutate(sev_cas_civ_count = sev_cas_civ_count - dplyr::lag(sev_cas_civ_count)) %>%
   right_join(tidyr::expand(., date = full_seq(date, 1)), by = "date") %>%
   arrange(date) %>%
   fill(sev_cas_civ_count) %>%
@@ -81,9 +81,15 @@ data_sev_cas_rus <- get_data_rus_cas(start = Sys.getenv("RUS_CAS_START"), end = 
 
 saveRDS(data_sev_cas_rus, "data/severity/data_rus_cas.RDS")
 
+# data_sev_cas_rus <- readRDS("data/severity/data_rus_cas.RDS")
+
 data_sev_cas_rus_agg <- data_sev_cas_rus %>%
+  group_by(type) %>%
+  mutate(d_value = value - dplyr::lag(value),
+         d_value = if_else(is.na(d_value), value, d_value)) %>%
+  ungroup() %>%
   filter(type == "Military personnel") %>%
-  select(-type, sev_cas_rus_mil_count = value)
+  select(date, sev_cas_rus_mil_count = d_value)
 
 ## Conflict events
 # From https://acleddata.com/ukraine-crisis/#data

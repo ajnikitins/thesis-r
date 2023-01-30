@@ -26,8 +26,9 @@ data_complete <- data_donations %>%
   left_join(data_factiva, by = "date") %>%
   left_join(data_severity, by = "date") %>%
   mutate(date = as_date(date)) %>%
-  mutate(across(contains(c("count", "total", "value", "mean")), ~ log(.), .names = "log_{.col}"),
-         across(c(-date, -type, -contains("dum"), -contains("log_")), ~ . - lag(.), .names = "d_{.col}"),
-         across(c(-date, -type, -contains("dum"), -starts_with(c("d_", "log_"))), ~ log(.) - log(lag(.)), .names = "dlog_{.col}"))
+  # mutate(across(contains(c("count", "total", "value", "mean")), ~ log(.), .names = "log_{.col}"),
+  mutate(across(c(-date, -type, -contains("dum")), ~ log(.), .names = "log_{.col}"),
+         across(c(-date, -type, -contains("dum"), -contains("log_")), ~ . - dplyr::lag(.), .names = "d_{.col}"),
+         across(c(-date, -type, -contains("dum"), -starts_with(c("d_", "log_"))), ~ log(.) - log(dplyr::lag(.)), .names = "dlog_{.col}"))
 
 saveRDS(data_complete, "data/data_complete.RDS")
