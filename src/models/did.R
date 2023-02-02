@@ -3,7 +3,9 @@ library(readxl)
 library(lubridate)
 library(plm)
 library(lmtest)
+library(sandwich)
 library(texreg)
+library(glue)
 
 generate_hours <- \(day, start_h, end_h, offset_h) {
   pre_start_date <- day
@@ -36,25 +38,24 @@ data <- data_intraday %>%
   # filter(date >= dmy("16-03-2022")) %>%
   filter(type != "Crypto") %>%
   group_by(type) %>%
-  mutate(group_n = 4,
+  mutate(group_n = 1,
          group = ifelse(hour(date) %% group_n == 0, row_number(), row_number() - hour(date) %% group_n)) %>%
   group_by(type, group) %>%
   summarise(date = date[[1]], group_n = group_n[[1]], across(c(don_count, don_total, don_total_usd, strike_count), sum), don_mean = don_total / don_count, don_mean_usd = don_total_usd / don_count) %>%
   mutate(across(don_mean_usd, replace_na, 0)) %>%
   left_join(data_events, by = "date") %>%
-  fill(event_dum, .direction = "down") %>%
-  mutate(start_h = 6, end_h = start_h + 24, pre_offset_h = 24,
-         is_active = if_else(event_dum == 1 & dplyr::between(hour(date), start_h[[1]], end_h[[1]]), 1, 0),
-         is_pre = if_else(reduce(lapply(1:(floor(pre_offset_h[[1]] / group_n[[1]])), \(x) dplyr::lead(is_active, x) == 1), `|`) & is_active == 0, 1, 0),
-         # is_post = if_else(lag(is_active, 14) == 1, 1, 0),
+  mutate(event_dum = replace_na(event_dum, 0)) %>%
+  # fill(event_dum, .direction = "down") %>%
+  mutate(start_h = 6, pre_offset_h = 24, end_offset_h = 18,
          is_treatment = if_else(type == "Ukrainian", 1, 0),
-         # across(c(is_pre, is_post), replace_na, 0)
+         is_active = if_else(reduce(lapply((floor(start_h[[1]] / group_n[[1]])):(floor((start_h[[1]] + end_offset_h[[1]] - 1) / group_n[[1]])), \(x) dplyr::lag(event_dum, x) == 1), `|`), 1, 0),
+         is_pre = if_else(reduce(lapply(1:(floor(pre_offset_h[[1]] / group_n[[1]])), \(x) dplyr::lead(is_active, x) == 1), `|`) & is_active == 0, 1, 0),
          across(is_pre, replace_na, 0)
   ) %>%
-  mutate(is_daylight = if_else(dplyr::between(hour(date), 6, 22), 1, 0)) %>%
+  mutate(is_daylight = if_else(dplyr::between(hour(date), 6, 22 - 1), 1, 0)) %>%
   group_by(type) %>%
   # Normalization?
-  mutate(across(c(don_count, don_total_usd, don_mean_usd), ~ (.x - mean(.x)) / sd(.x))) %>%
+  mutate(across(c(don_count, don_total_usd, don_mean_usd), ~(.x - mean(.x)) / sd(.x))) %>%
   # mutate(across(c(don_count, don_total_usd, don_mean_usd), log)) %>%
   # mutate(across(c(don_count, don_total_usd, don_mean_usd), ~ log(.) - log(dplyr::lag(., 1)))) %>%
   filter(date >= dmy("16-03-2022"))
@@ -67,14 +68,14 @@ data <- data_intraday %>%
 did <- data.frame(
   specification = c("normal", "daylight"),
   expand_grid(
-  dep_var = c("don_count", "don_total_usd", "don_mean_usd"),
-  indep_vars = list(c("is_treatment", "is_pre", "is_active", "is_pre:is_treatment", "is_active:is_treatment"),
-                    c("is_treatment", "is_daylight", "is_pre", "is_active", "is_daylight:is_treatment", "is_pre:is_treatment", "is_active:is_treatment"))
-)) %>%
+    dep_var = c("don_count", "don_total_usd", "don_mean_usd"),
+    indep_vars = list(c("is_treatment", "is_pre", "is_active", "is_pre:is_treatment", "is_active:is_treatment"),
+                      c("is_treatment", "is_daylight", "is_pre", "is_active", "is_daylight:is_treatment", "is_pre:is_treatment", "is_active:is_treatment"))
+  )) %>%
   rowwise() %>%
   mutate(eq = list(formula(paste(dep_var, "~", paste(indep_vars, collapse = "+")))),
-            mod = list(lm(eq, data = data)),
-            mod_robust = list(coeftest(mod, vcov = vcovHAC(mod))))
+         mod = list(lm(eq, data = data)),
+         mod_robust = list(coeftest(mod, vcov = vcovHAC(mod))))
 
 did %>%
   mutate(dep_var = list(switch(dep_var, don_count = "Count", don_total_usd = "Total value (USD)", don_mean_usd = "Mean value (USD)"))) %>%
@@ -87,29 +88,56 @@ did %>%
                 custom.note = "
                 \\item %stars \\\\
                 \\item $is\\_treatment = 1$ for Ukrainian donations, $is\\_active = 1$ for 06:00 until 23:59 for days with events, $is\\_pre = 1$ for 06:00 previous day until 05:59 for days with events, $is\\_daylight = 1$ for 06:00 until 22:00 for all days."
-    )})
+  ) })
+
+### Dynamic
+data_dynamic <- data %>%
+  mutate(rel_time = apply(cbind(sapply((-floor(pre_offset_h[[1]] / group_n[[1]])):(floor((end_offset_h[[1]] - 1) / group_n[[1]])), \(x) ifelse(data.table::shift(is_active, x, type = "lag", fill = 0) == 1 & hour(data.table::shift(date, x, type = "lag", fill = 0)) == start_h[[1]], x, NA))), 1, \(x) if(all(is.na(x))) NA else sum(x, na.rm = TRUE))) %>%
+  fastDummies::dummy_cols("rel_time") %>%
+  filter(!is.na(rel_time)) %>%
+  mutate(across(starts_with("rel_time"), replace_na, 0))
+
+did_dynamic <- data.frame(
+  # specification = c("normal", "daylight"),
+  specification = c("normal"),
+  expand_grid(
+    dep_var = c("don_count", "don_total_usd", "don_mean_usd"),
+    indep_vars = list(c("is_treatment", glue("`rel_time_{setdiff((min(data_dynamic$rel_time, na.rm = TRUE)):(max(data_dynamic$rel_time, na.rm = TRUE)), -1)}`"), glue("is_treatment:`rel_time_{setdiff((min(data_dynamic$rel_time, na.rm = TRUE)):(max(data_dynamic$rel_time, na.rm = TRUE)), -1)}`")))
+  )) %>%
+  rowwise() %>%
+  mutate(eq = list(formula(paste(dep_var, "~", paste(indep_vars, collapse = "+")))),
+         mod = list(lm(eq, data = data_dynamic)),
+         mod_robust = list(coeftest(mod, vcov = vcovHAC(mod))),
+         mod_robust_ci = list(coefci(mod, vcov = vcovHAC(mod)))
+  )
+
+screenreg(did_dynamic$mod_robust)
+summary(did_dynamic$mod[[1]])
+
+did_dynamic %>%
+  mutate(coef_name = list(names(mod$coefficients)),
+         coef = list(mod$coefficients),
+         coef_ci_low = list(mod_robust_ci[, 1]),
+         coef_ci_high = list(mod_robust_ci[, 2])
+         ) %>%
+  select(specification, dep_var, starts_with("coef")) %>%
+  unnest_longer(starts_with("coef"), indices_include = FALSE) %>%
+  filter(str_detect(coef_name, "is_treatment")) %>%
+  mutate(coef_name = if_else(coef_name == "is_treatment", "is_treatment:`rel_time_-1`", coef_name)) %>%
+  mutate(coef_name = as.numeric(str_extract(coef_name, "-?\\d+"))) %>%
+  group_by(specification, dep_var) %>%
+  arrange(coef_name, .by_group = TRUE) %>%
+  ggplot(aes(x = coef_name, y = coef)) +
+  geom_line() +
+  geom_errorbar(aes(ymin = coef_ci_low, ymax = coef_ci_high)) +
+  facet_grid(vars(dep_var), vars(specification)) +
+  geom_hline(aes(yintercept = 0))
 
 
-did_count <- lm(don_count ~ is_treatment + is_daylight + is_pre + is_active + is_daylight:is_treatment + is_pre:is_treatment + is_active:is_treatment, data = data)
-did_count %>% summary()
-did_count_robust <- coeftest(did_stacked_count, vcov = vcovHAC(did_stacked_count))
+coeftest(did_dynamic$mod[[1]], vcov = vcovHAC(did_dynamic$mod[[1]]))
+coefci(did_dynamic$mod[[1]], vcov = vcovHAC(did_dynamic$mod[[1]]))
 
-did_total <- lm(don_total_usd ~ is_treatment + is_pre + is_active + is_pre:is_treatment + is_active:is_treatment, data = data)
-did_total %>% summary()
-did_total_robust <- coeftest(did_stacked_total, vcov = vcovHAC(did_stacked_total))
-
-did_mean <- nlme::gls(don_mean_usd ~ is_treatment + is_pre + is_active + is_pre:is_treatment + is_active:is_treatment, data = data)
-did_mean %>% summary()
-
-screenreg(list(did_count, did_total, did_mean),
-                  include.aic = FALSE, include.bic = FALSE, include.loglik = FALSE,
-                  custom.model.names = c("Count", "Total", "Mean"),
-                  dcolumn = TRUE, booktabs = TRUE, threeparttable = TRUE,
-                  stars = c(0.001, 0.01, 0.05, 0.10),
-                  caption = "D-i-D analysis for hourly donation characteristics (levels).",
-                  custom.note = "\\item %stars \\\\
-                  \\item $is\\_treatment = 1$ for Ukrainian donations, $is\\_active = 1$ for 06:00 (including) till 22:00 (incl.) for days with events, $is\\_pre = 1$ for 03:00 (incl.) till 06:00 (excl.) for days with events.\\item $is\\_treatment = 1$ for Ukrainian donations, $is\\_active = 1$ for 06:00 till 22:00 (including) for days with events, $is\\_pre = 1$ for 03:00 till 06:00 (excluding)."
-)
+### Stacked
 
 data_stacked <- data_events %>%
   filter(date >= dmy("16-03-2022")) %>%
@@ -124,8 +152,8 @@ data_stacked <- data_events %>%
   mutate(is_daylight = if_else(dplyr::between(hour(date), 6, 22), 1, 0)) %>%
   mutate(time = rel_time + 24) %>%
   group_by(type) #%>%
-  # Normalization?
-  # mutate(across(c(don_count, don_total_usd, don_mean_usd), ~ (.x - mean(.x)) / sd(.x)))
+# Normalization?
+# mutate(across(c(don_count, don_total_usd, don_mean_usd), ~ (.x - mean(.x)) / sd(.x)))
 
 data_stacked_panel <- data_stacked %>%
   # mutate(group = paste0(group, "-", is_treatment)) %>%
@@ -136,18 +164,18 @@ data_stacked_panel <- data_stacked %>%
 # lm(don_total_usd ~ 0 + factor(group) + factor(rel_time) + is_treatment:factor(rel_time), data = data_stacked) %>% summary()
 # lm(don_mean_usd ~ factor(group) + factor(rel_time) + is_treatment:factor(rel_time), data = data_stacked) %>% summary()
 
-did_stacked_count <- plm(don_count ~ is_daylight:is_treatment + is_treatment:factor(rel_time), data = data_stacked_panel, model = "within", effect = "twoways")
-did_stacked_count %>% summary()
-did_stacked_count_robust <- coeftest(did_stacked_count, vcov = vcovHC(did_stacked_count, type = "HC1", cluster = "group"))
-
-screenreg(list(did_stacked_count, did_stacked_count_robust))
-
-
-did_stacked_total <- plm(don_total_usd ~ is_treatment:factor(rel_time), data = data_stacked_panel, model = "within", effect = "twoways") %>% summary()
-did_stacked_mean <-  plm(don_mean_usd ~ is_treatment:factor(rel_time), data = data_stacked_panel, model = "within", effect = "twoways") %>% summary()
-
-fixest::feols(don_count ~ is_daylight:is_treatment + is_treatment:factor(rel_time) | group + time, data = data_stacked) %>% summary()
-lfe::felm(don_count ~ is_daylight:is_treatment + is_treatment:factor(rel_time) | group + time | 0 | group, data = data_stacked) %>% summary()
+# did_stacked_count <- plm(don_count ~ is_daylight:is_treatment + is_treatment:factor(rel_time), data = data_stacked_panel, model = "within", effect = "twoways")
+# did_stacked_count %>% summary()
+# did_stacked_count_robust <- coeftest(did_stacked_count, vcov = vcovHC(did_stacked_count, type = "HC1", cluster = "group"))
+#
+# screenreg(list(did_stacked_count, did_stacked_count_robust))
+#
+#
+# did_stacked_total <- plm(don_total_usd ~ is_treatment:factor(rel_time), data = data_stacked_panel, model = "within", effect = "twoways") %>% summary()
+# did_stacked_mean <-  plm(don_mean_usd ~ is_treatment:factor(rel_time), data = data_stacked_panel, model = "within", effect = "twoways") %>% summary()
+#
+# fixest::feols(don_count ~ is_daylight:is_treatment + is_treatment:factor(rel_time) | group + time, data = data_stacked) %>% summary()
+# lfe::felm(don_count ~ is_daylight:is_treatment + is_treatment:factor(rel_time) | group + time | 0 | group, data = data_stacked) %>% summary()
 
 did_stacked <- data.frame(
   specification = c("normal", "daylight"),
@@ -165,14 +193,14 @@ did_stacked <- data.frame(
 
 did_stacked %>%
   with({ screenreg(mod,
-                custom.header = set_names(split(seq_along(mod), cut(seq_along(mod), length(unique(dep_var)), labels = FALSE)), unique(dep_var)),
-                custom.model.names = rep(" ", length(mod)),
-                dcolumn = TRUE, booktabs = TRUE, threeparttable = TRUE,
-                stars = c(0.001, 0.01, 0.05, 0.10),
-                caption = "D-i-D analysis for hourly donation characteristics (levels).",
-                # custom.note = "
-                # \\item %stars \\\\
-                # \\item $is\\_treatment = 1$ for Ukrainian donations, $is\\_active = 1$ for 06:00 until 23:59 for days with events, $is\\_pre = 1$ for 06:00 previous day until 05:59 for days with events, $is\\_daylight = 1$ for 06:00 until 22:00 for all days."
-  )})
+                   custom.header = set_names(split(seq_along(mod), cut(seq_along(mod), length(unique(dep_var)), labels = FALSE)), unique(dep_var)),
+                   custom.model.names = rep(" ", length(mod)),
+                   dcolumn = TRUE, booktabs = TRUE, threeparttable = TRUE,
+                   stars = c(0.001, 0.01, 0.05, 0.10),
+                   caption = "D-i-D analysis for hourly donation characteristics (levels).",
+                   # custom.note = "
+                   # \\item %stars \\\\
+                   # \\item $is\\_treatment = 1$ for Ukrainian donations, $is\\_active = 1$ for 06:00 until 23:59 for days with events, $is\\_pre = 1$ for 06:00 previous day until 05:59 for days with events, $is\\_daylight = 1$ for 06:00 until 22:00 for all days."
+  ) })
 
 
