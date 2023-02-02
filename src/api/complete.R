@@ -25,10 +25,13 @@ data_complete <- data_donations %>%
   left_join(data_sentiments, by = "date") %>%
   left_join(data_factiva, by = "date") %>%
   left_join(data_severity, by = "date") %>%
+  group_by(type) %>%
   mutate(date = as_date(date)) %>%
-  # mutate(across(contains(c("count", "total", "value", "mean")), ~ log(.), .names = "log_{.col}"),
-  mutate(across(c(-date, -type, -contains("dum")), ~ log(.), .names = "log_{.col}"),
-         across(c(-date, -type, -contains("dum"), -contains("log_")), ~ . - dplyr::lag(.), .names = "d_{.col}"),
-         across(c(-date, -type, -contains("dum"), -starts_with(c("d_", "log_"))), ~ log(.) - log(dplyr::lag(.)), .names = "dlog_{.col}"))
+  mutate(across(c(-date, -contains("dum")), ~log(.), .names = "log_{.col}"),
+         across(c(-date, -contains("dum"), -contains("log_")), ~. - dplyr::lag(.), .names = "d_{.col}"),
+         across(c(-date, -contains("dum"), -starts_with(c("d_", "log_"))), ~log(.) - log(dplyr::lag(.)), .names = "dlog_{.col}")) %>%
+  filter(date >= ymd("2022-03-16")) %>%
+  mutate(across(c(-date, -contains("dum")), ~findInterval(.x, quantile(.x, seq(0, 1, 0.2)), rightmost.closed = TRUE), .names = "{col}_quint")) %>%
+  ungroup()
 
 saveRDS(data_complete, "data/data_complete.RDS")
