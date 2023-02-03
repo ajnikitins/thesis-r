@@ -5,6 +5,7 @@ library(readxl)
 # Load variables
 data_donations <- readRDS("data/data_donations.RDS")
 data_sirens <- readRDS("data/sirens/data_sirens.RDS")
+data_strikes <- readRDS("data/data_strikes.RDS")
 data_tweet_count <- readRDS("data/tweets/count/data_tweet_count_day.RDS")
 data_factiva <- readRDS("data/factiva.RDS")
 data_severity <- readRDS("data/severity/data_severity.RDS")
@@ -20,6 +21,7 @@ data_events <- data_events_raw %>%
 data_complete <- data_donations %>%
   left_join(data_events, by = "date") %>%
   left_join(data_sirens, by = "date") %>%
+  left_join(data_strikes, by = "date") %>%
   left_join(data_tweet_count, by = "date") %>%
   left_join(data_emotions, by = "date") %>%
   left_join(data_sentiments, by = "date") %>%
