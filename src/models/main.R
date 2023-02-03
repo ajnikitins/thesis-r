@@ -2,6 +2,8 @@ library(tidyverse)
 library(glue)
 library(systemfit)
 library(texreg)
+library(lmtest)
+library(sandwich)
 
 WEEKDAYS <- c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
 
@@ -90,8 +92,13 @@ get_eq <- \(dep_var, indep_var, dep_var_form = NA, types = c("Ukrainian", "Forei
 
 # Run models according to specifications
 mods <- mods_template %>%
-  mutate(eq = pmap(list(dep_var, indep_vars, dep_var_form), get_eq)) %>%
-  mutate(mod = map(eq, systemfit, method = "SUR", data = data))
+  rowwise() %>%
+  mutate(eq = list(get_eq(dep_var, indep_vars, dep_var_form, deseasonalise = TRUE))) %>%
+  mutate(mod = list(systemfit(eq, method = "SUR", data = data, maxiter = 500)),
+         mod_robust = list(coeftest(mod, vcov = vcovHAC(mod))),
+         mod_robust_se = list(split(mod_robust[, 2], cut(seq_along(mod_robust[, 2]), 3, labels = FALSE))),
+         mod_robust_p = list(split(mod_robust[, 4], cut(seq_along(mod_robust[, 4]), 3, labels = FALSE)))
+  )
 
 # Code for testing individual models
 # dep_var <- "don_count"
