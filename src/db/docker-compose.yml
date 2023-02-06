@@ -12,7 +12,7 @@ services:
       - 27017:27017
     volumes:
       - thesis-data:/data/db
-      - $PROJECT_DIR/data:/tmp/data
+      - $PROJECT_DIR/data_manual:/tmp/data
       - $PROJECT_DIR/src/db:/tmp/scripts
 
   mongo-express:
