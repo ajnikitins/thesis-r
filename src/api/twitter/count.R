@@ -1,6 +1,7 @@
 library(academictwitteR)
 library(tidyverse)
 library(glue)
+library(lubridate)
 
 # Count tweets ----
 data_tweet_count_raw <- count_all_tweets(
@@ -21,7 +22,8 @@ data_tweet_count_raw <- count_all_tweets(
 
 # Reformat raw twitter counts
 data_tweet_count <- data_tweet_count_raw %>%
-  mutate(date = as_date(start)) %>%
-  select(date, tweet_count)
+  mutate(date = if (Sys.getenv('TWITTER_COUNT_GRANULARITY') == "day") ymd(start) else ymd_hms(start)) %>%
+  select(date, tweet_count) %>%
+  arrange(date)
 
 saveRDS(data_tweet_count, glue("data/tweets/count/data_tweet_count_{Sys.getenv('TWITTER_COUNT_GRANULARITY')}.RDS"))
