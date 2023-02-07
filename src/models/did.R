@@ -7,58 +7,44 @@ library(sandwich)
 library(texreg)
 library(glue)
 
-generate_hours <- \(day, start_h, end_h, offset_h) {
-  pre_start_date <- day
-  hour(pre_start_date) <- start_h - offset_h
+generate_hours <- \(day, start_h, pre_offset_h, post_offset_h) {
   start_date <- day
   hour(start_date) <- start_h
-  pre <- data.frame(date = seq(pre_start_date, start_date - 3600, by = "hours"), rel_time = (-offset_h):(-1), is_pre = 1)
 
-  end_date <- day
-  hour(end_date) <- end_h
-  # post_end_date <- day
-  # hour(post_end_date) <- end_h + offset_h
-  # post <- data.frame(date = seq(end_date + 3600, post_end_date, by = "hours"), is_post = 1)
+  pre_start_date <- day
+  hour(pre_start_date) <- start_h - pre_offset_h
+  pre <- data.frame(date = seq(pre_start_date, start_date - 3600, by = "hours"), rel_time = (-pre_offset_h):(-1), is_pre = 1)
 
-  active <- data.frame(date = seq(start_date, end_date, by = "hours"), rel_time = 0:(end_h - start_h), is_active = 1)
+  post_date <- day
+  hour(post_date) <- start_h + post_offset_h
+  post <- data.frame(date = seq(start_date, post_date - 3600, by = "hours"), rel_time = 0:(post_offset_h - 1), is_post = 1)
 
-  bind_rows(pre, active) %>%
-    mutate(across(c(is_pre, is_active), replace_na, 0)) %>%
-    mutate(group = paste0(year(day), month(day), day(day)))
+  dates <- bind_rows(pre, post) %>%
+    mutate(across(c(is_pre, is_post), replace_na, 0),
+           is_pre = if_else(rel_time == -1, 0, is_pre),
+           group = paste0(year(day), month(day), day(day)))
 }
 
 data_intraday <- readRDS("data/data_intraday.RDS")
-data_events_raw <- read_excel("data/important_events.xlsx")
+data_events_raw <- read_excel("data/important_events_daily.xlsx")
 data_events <- data_events_raw %>%
   mutate(event_dum = if_else(!is.na(coloring), 1, 0, missing = 0)) %>%
   select(date, event_dum) %>%
   mutate(event_dum = if_else(date == dmy("11-10-2022") | date == dmy("01-06-2022"), 0, event_dum))
 
-data <- data_intraday %>%
-  # filter(date >= dmy("16-03-2022")) %>%
+data <- data_events %>%
+  filter(date >= dmy("16-03-2022")) %>%
+  filter(event_dum == 1) %>%
+  mutate(start_h = 12, pre_offset_h = 48, post_offset_h = 48) %>%
+  rowwise() %>%
+  transmute(date = list(generate_hours(date, start_h, pre_offset_h, post_offset_h))) %>%
+  unnest(date) %>%
+  left_join(data_intraday, by = "date") %>%
   filter(type != "Crypto") %>%
-  group_by(type) %>%
-  mutate(group_n = 1,
-         group = ifelse(hour(date) %% group_n == 0, row_number(), row_number() - hour(date) %% group_n)) %>%
-  group_by(type, group) %>%
-  summarise(date = date[[1]], group_n = group_n[[1]], across(c(don_count, don_total, don_total_usd, strike_count), sum), don_mean = don_total / don_count, don_mean_usd = don_total_usd / don_count) %>%
-  mutate(across(don_mean_usd, replace_na, 0)) %>%
-  left_join(data_events, by = "date") %>%
-  mutate(event_dum = replace_na(event_dum, 0)) %>%
-  # fill(event_dum, .direction = "down") %>%
-  mutate(start_h = 6, pre_offset_h = 24, end_offset_h = 18,
-         is_treatment = if_else(type == "Ukrainian", 1, 0),
-         is_active = if_else(reduce(lapply((floor(start_h[[1]] / group_n[[1]])):(floor((start_h[[1]] + end_offset_h[[1]] - 1) / group_n[[1]])), \(x) dplyr::lag(event_dum, x) == 1), `|`), 1, 0),
-         is_pre = if_else(reduce(lapply(1:(floor(pre_offset_h[[1]] / group_n[[1]])), \(x) dplyr::lead(is_active, x) == 1), `|`) & is_active == 0, 1, 0),
-         across(is_pre, replace_na, 0)
-  ) %>%
-  mutate(is_daylight = if_else(dplyr::between(hour(date), 6, 22 - 1), 1, 0)) %>%
-  group_by(type) %>%
-  # Normalization?
-  mutate(across(c(don_count, don_total_usd, don_mean_usd), ~(.x - mean(.x)) / sd(.x))) %>%
-  # mutate(across(c(don_count, don_total_usd, don_mean_usd), log)) %>%
-  # mutate(across(c(don_count, don_total_usd, don_mean_usd), ~ log(.) - log(dplyr::lag(., 1)))) %>%
-  filter(date >= dmy("16-03-2022"))
+  mutate(is_treatment = if_else(type == "Ukrainian", 1, 0)) %>%
+  mutate(is_daylight = if_else(dplyr::between(hour(date), 6, 22), 1, 0)) %>%
+  mutate(time = rel_time + 24) %>%
+  group_by(type)
 
 # data %>%
 #   ungroup() %>%
@@ -66,11 +52,15 @@ data <- data_intraday %>%
 #   filter(if_any(c(don_count, don_total_usd, don_mean_usd), ~ is.na(.) | is.nan(.) | is.infinite(.)))
 
 did <- data.frame(
-  specification = c("normal", "daylight"),
+  specification = c("normal", "pre", "daylight"),
   expand_grid(
+    # dep_var = c("log1_don_count", "log1_don_total_usd", "log1_don_mean_usd"),
     dep_var = c("don_count", "don_total_usd", "don_mean_usd"),
-    indep_vars = list(c("is_treatment", "is_pre", "is_active", "is_pre:is_treatment", "is_active:is_treatment"),
-                      c("is_treatment", "is_daylight", "is_pre", "is_active", "is_daylight:is_treatment", "is_pre:is_treatment", "is_active:is_treatment"))
+    indep_vars = list(
+      c("is_treatment", "is_post", "is_post:is_treatment"),
+      c("is_treatment", "is_pre", "is_post", "is_pre:is_treatment", "is_post:is_treatment"),
+      c("is_treatment", "is_daylight", "is_pre", "is_post", "is_daylight:is_treatment", "is_pre:is_treatment", "is_post:is_treatment")
+    )
   )) %>%
   rowwise() %>%
   mutate(eq = list(formula(paste(dep_var, "~", paste(indep_vars, collapse = "+")))),
@@ -78,8 +68,8 @@ did <- data.frame(
          mod_robust = list(coeftest(mod, vcov = vcovHAC(mod))))
 
 did %>%
-  mutate(dep_var = list(switch(dep_var, don_count = "Count", don_total_usd = "Total value (USD)", don_mean_usd = "Mean value (USD)"))) %>%
-  with({ texreg(mod_robust,
+  # mutate(dep_var = list(switch(dep_var, don_count = "Count", don_total_usd = "Total value (USD)", don_mean_usd = "Mean value (USD)"))) %>%
+  with({ screenreg(mod_robust,
                 custom.header = set_names(split(seq_along(mod), cut(seq_along(mod), length(unique(dep_var)), labels = FALSE)), unique(dep_var)),
                 custom.model.names = rep(" ", length(mod)),
                 dcolumn = TRUE, booktabs = TRUE, threeparttable = TRUE,
@@ -142,9 +132,9 @@ coefci(did_dynamic$mod[[1]], vcov = vcovHAC(did_dynamic$mod[[1]]))
 data_stacked <- data_events %>%
   filter(date >= dmy("16-03-2022")) %>%
   filter(event_dum == 1) %>%
-  mutate(start_h = 6, end_h = 24, offset_h = 24) %>%
+  mutate(start_h = 6, pre_offset_h = 24, post_offset_h = 24) %>%
   rowwise() %>%
-  transmute(time = list(generate_hours(date, start_h, end_h, offset_h))) %>%
+  transmute(time = list(generate_hours(date, start_h, pre_offset_h, post_offset_h))) %>%
   unnest(time) %>%
   left_join(data_intraday, by = "date") %>%
   filter(type != "Crypto") %>%
