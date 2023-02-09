@@ -34,7 +34,8 @@ data_complete_full <- data_donations %>%
   mutate(date = as_date(date)) %>%
   mutate(across(c(-date, -contains("dum")), ~log(.), .names = "log_{.col}"),
          across(c(-date, -contains("dum"), -contains("log_")), ~. - dplyr::lag(.), .names = "d_{.col}"),
-         across(c(-date, -contains("dum"), -starts_with(c("d_", "log_"))), ~log(.) - log(dplyr::lag(.)), .names = "dlog_{.col}"))
+         across(c(-date, -contains("dum"), -starts_with(c("d_", "log_"))), ~log(.) - log(dplyr::lag(.)), .names = "dlog_{.col}")) %>%
+  filter(date >= ymd("2022-02-21"))
 
 saveRDS(data_complete_full, "data/data_complete_full.RDS")
 
