@@ -39,6 +39,10 @@ mods_specifications <- list(
   list(name = "media", dep_var_form = c("dlog"), indep_vars = c("event_positive_dum", "event_negative_dum", "dlog_siren_count", "dlog_strike_air_count", "siren_prop",
                                                                 "dlog_sev_cas_civ_count", "dlog_sev_cas_rus_mil_count", "dlog_sev_confl_evs_count",
                                                                 "dlog_tweet_count", "dlog_factiva_count")),
+  list(name = "media_int", dep_var_form = c("dlog"), indep_vars = c("event_positive_dum", "event_negative_dum", "dlog_siren_count", "dlog_strike_air_count", "siren_prop",
+                                                                    "dlog_sev_cas_civ_count", "dlog_sev_cas_rus_mil_count", "dlog_sev_confl_evs_count",
+                                                                    "dlog_tweet_count", "dlog_factiva_count",
+                                                                    "dlog_tweet_count:event_positive_dum", "dlog_tweet_count:event_negative_dum")),
   list(name = "emotions", dep_var_form = c("dlog"), indep_vars = c("event_positive_dum", "event_negative_dum", "dlog_siren_count", "dlog_strike_air_count", "siren_prop",
                                                                    "dlog_sev_cas_civ_count", "dlog_sev_cas_rus_mil_count", "dlog_sev_confl_evs_count",
                                                                    "dlog_tweet_count", "dlog_factiva_count",
@@ -120,6 +124,7 @@ mod_tables <- mods %>%
                                     sirens = list("Event types" = 2:3, "Air raid sirens" = 4:6),
                                     severity = list("Event types" = 2:3, "Air raid sirens" = 4:6, "War severity" = 7:9),
                                     media = list("Event types" = 2:3, "Air raid sirens" = 4:6, "War severity" = 7:9, "Media" = 10:11),
+                                    media_int = list("Event types" = 2:3, "Air raid sirens" = 4:6, "War severity" = 7:9, "Media" = 10:13),
                                     emotions = list("Event types" = 2:3, "Air raid sirens" = 4:6, "War severity" = 7:9, "Media" = 10:11, "Emotion type" = 12:19),
                                     NULL
   )),
@@ -135,6 +140,7 @@ mod_tables <- mods %>%
                                      "dlog_siren_count" = NA, "siren_count" = NA, "dlog_siren_mean_duration" = NA, "siren_mean_duration" = NA,  "dlog_strike_air_count" = NA, "dlog_siren_prop" = NA, "siren_prop" = NA,"siren_kyiv_dum" = NA,
                                      "dlog_sev_cas_civ_count" = NA, "dlog_sev_cas_rus_mil_count" = NA, "dlog_sev_confl_evs_count" = NA,
                                      "dlog_tweet_count" = NA, "dlog_factiva_count" = NA,
+                                     "event_positive_dum:dlog_tweet_count" = NA, "event_negative_dum:dlog_tweet_count" = NA,
                                      emotion_coef_names
                                         # "weekdayMonday" = NA, "weekdayTuesday" = NA, "weekdayWednesday" = NA, "weekdayThursday" = NA, "weekdayFriday" = NA, "weekdaySaturday" = NA, "weekdaySunday" = NA,
                                         # "daysSince" = NA
@@ -152,6 +158,7 @@ mod_tables <- mods %>%
                                      sirens = "Donation characteristics and proxies for emotional intensity.",
                                      severity = "Donation characteristics and proxies for emotional intensity.",
                                      media = "Donation characteristics and proxies for emotional intensity and exposure.",
+                                     media_int = "Donation characteristics and proxies for emotional intensity and exposure.",
                                      emotions = "Donation characteristics and proxies for emotional intensity, exposure and type of emotion."
          )),
          table_label = glue("table:{dep_var_form}_{specification_name}"),
