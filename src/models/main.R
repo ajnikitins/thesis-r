@@ -178,8 +178,9 @@ mod_tables <- mods %>%
                              use.packages = FALSE)))
 
 ltx_file <- paste(mod_tables$table)
-write(ltx_file, "src/latex/supplement.tex")
-tools::texi2pdf("src/latex/main.tex", clean = TRUE)
+write(ltx_file, "results/latex_main/supplement.tex")
+file.copy("src/latex/main.tex", "results/latex_main/main.tex")
+tools::texi2pdf("results/latex_main/main.tex", clean = TRUE)
 file.copy("main.pdf", "results/OLS_results.pdf", overwrite = TRUE)
 
 # Summary of results (sign and significance)
