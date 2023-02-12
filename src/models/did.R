@@ -6,191 +6,254 @@ library(lmtest)
 library(sandwich)
 library(texreg)
 library(glue)
+library(fixest)
 
-generate_hours <- \(day, start_h, pre_offset_h, post_offset_h) {
+# Utility for generating times for events
+generate_hours <- \(day, start_h, pre_offset_h, post_offset_h, ignore_night = FALSE) {
+  # Generates a sequence of hours, given a start, finish and whether nighttime (00-06) should be ignored
+  generate_time_sequence <- \(from, to, ignore_night = FALSE, ignore_direction = "forward") {
+    # Generate base sequence
+    sequence <- seq(from, to, by = "hours")
+
+    if (ignore_night) {
+      # Need to reverse sequence if we're going "back" in time (for per-periods)
+      if (ignore_direction == "backward") {
+        sequence <- rev(sequence)
+      }
+
+      # offset is a vector of hours each date in `sequence` needs to be adjusted by to get no hours between (00:06) and still be a "continuous" sequence
+      offset <- accumulate(sequence, \(acc, x) {
+        if (dplyr::between(hour(x + 3600 * acc), 0, 5)) {
+          # 1 and 6 is the amount of hours that midnight needs to be adjusted by, the `hour(.)` term increases/decreases the offset for post-midnight hours
+          if (ignore_direction == "backward") {
+            acc - 1 - hour(x + 3600 * acc)
+          } else if (ignore_direction == "forward") {
+            acc + 6 - hour(x + 3600 * acc)
+          }
+        } else acc
+      }, .init = 0)
+
+      # Calculate the new sequence
+      res <- sequence + offset[-1] * 3600
+
+      # Reverse the sequence back to make it ascending
+      if (ignore_direction == "backward") {
+        rev(res)
+      } else {
+        res
+      }
+
+    } else {
+      sequence
+    }
+
+  }
+
   start_date <- day
+
+  # Adjust the starting hour in case it's during night (set it to the next morning)
+  if (dplyr::between(start_h, 0, 5)) {
+    start_h <- 6
+  }
+
   hour(start_date) <- start_h
 
   pre_start_date <- day
   hour(pre_start_date) <- start_h - pre_offset_h
-  pre <- data.frame(date = seq(pre_start_date, start_date - 3600, by = "hours"), rel_time = (-pre_offset_h):(-1), is_pre = 1)
+  pre <- data.frame(date = generate_time_sequence(pre_start_date, start_date - 3600, ignore_night, "backward"), rel_time = (-pre_offset_h):(-1), is_pre = 1)
+  # pre <- data.frame(date = seq(pre_start_date, start_date - 3600, by = "hours"), rel_time = (-pre_offset_h):(-1), is_pre = 1)
 
   post_date <- day
   hour(post_date) <- start_h + post_offset_h
-  post <- data.frame(date = seq(start_date, post_date - 3600, by = "hours"), rel_time = 0:(post_offset_h - 1), is_post = 1)
+  # post <- data.frame(date = seq(start_date, post_date - 3600, by = "hours"), rel_time = 0:(post_offset_h - 1), is_post = 1)
+  post <- data.frame(date = generate_time_sequence(start_date, post_date - 3600, ignore_night, "forward"), rel_time = 0:(post_offset_h - 1), is_post = 1)
 
   dates <- bind_rows(pre, post) %>%
     mutate(across(c(is_pre, is_post), replace_na, 0),
            is_pre = if_else(rel_time == -1, 0, is_pre),
-           group = paste0(year(day), month(day), day(day)))
+           group = glue("{year(day)}{month(day)}{day(day)}-{start_h}"))
+}
+
+generate_models <- \(data, specifications, estimate_fixef = FALSE, fixef = "type_sub") {
+  mods <- if (estimate_fixef) {
+    specifications %>%
+      rowwise() %>%
+      mutate(dep_var = if (dep_var_form == "level") dep_var else paste0(dep_var_form, "_", dep_var),
+             eq = list(formula(paste(dep_var, "~", paste(indep_vars, collapse = "+"), glue("| {fixef} + rel_time")))),
+             mod = list(feols(eq, data = data, panel.id = ~type_sub + rel_time, vcov = "DK")))
+  } else {
+    specifications %>%
+      rowwise() %>%
+      mutate(dep_var = if (dep_var_form == "level") dep_var else paste0(dep_var_form, "_", dep_var),
+             eq = list(formula(paste(dep_var, "~", paste(indep_vars, collapse = "+")))),
+             mod = list(lm(eq, data = data)),
+             mod = list(coeftest(mod, vcov = vcovHAC(mod))))
+  }
+
+  pull(mods, mod)
+}
+
+generate_data <- \(events, own_start_h, aggregation, pre_offset_h, post_offset_h, ignore_night, omit_crypto, distinct_dates) {
+  dates <- events %>%
+    rowwise() %>%
+    mutate(start_h = if (!is.na(own_start_h)) own_start_h else start_h) %>%
+    transmute(date = list(generate_hours(date, start_h, pre_offset_h, post_offset_h, ignore_night = ignore_night))) %>%
+    unnest(date) %>%
+    filter(date >= dmy("16-03-2022") & date < dmy("01-11-2022"))
+
+  if (distinct_dates) {
+    dates <- distinct(dates, date, .keep_all = TRUE)
+  }
+
+  variables <- if (aggregation == "type") {
+    data_intraday
+  } else if (aggregation == "type_sub") {
+    data_intraday_sub
+  }
+
+  data <- dates %>%
+    left_join(variables, by = "date") %>%
+    filter(!omit_crypto | type != "Crypto") %>%
+    mutate(is_treatment = if_else(type == "Ukrainian", 1, 0)) %>%
+    mutate(is_treated = if_else(is_treatment == 1 & is_post == 1, 1, 0)) %>%
+    mutate(is_daylight = if_else(dplyr::between(hour(date), 6, 22), 1, 0)) %>%
+    mutate(time = hour(date), .after = date)
 }
 
 data_intraday <- readRDS("data/data_intraday.RDS")
-data_events_raw <- read_excel("data/important_events_daily.xlsx")
+data_intraday_sub <- readRDS("data/data_intraday_sub.RDS")
+
+## Event times are in GMT+2
+data_events_raw <- read_excel("data/important_events_hourly.xlsx")
 data_events <- data_events_raw %>%
-  mutate(event_dum = if_else(!is.na(coloring), 1, 0, missing = 0)) %>%
-  select(date, event_dum) %>%
-  mutate(event_dum = if_else(date == dmy("11-10-2022") | date == dmy("01-06-2022"), 0, event_dum))
+  mutate(datetime = with_tz(ymd_hms(datetime, tz = "Europe/Kiev"), tzone = "UTC")) %>%
+  transmute(date = date(datetime),
+            start_h = hour(datetime),
+            event_dum = if_else(!is.na(coloring), 1, 0, missing = 0)) %>%
+  filter(date != dmy("11-10-2022"))
 
-data <- data_events %>%
-  filter(date >= dmy("16-03-2022")) %>%
-  filter(event_dum == 1) %>%
-  mutate(start_h = 12, pre_offset_h = 48, post_offset_h = 48) %>%
+did_specs <- list(
+  tibble(name = "single_two", own_start_h = 12, aggregation = "type", omit_crypto = TRUE, distinct_dates = TRUE, specifications = list(bind_rows(
+    tibble(specification_name = "normal", expand_grid(dep_var_form = c("level", "log1"), dep_var = c("don_count", "don_total_usd", "don_mean_usd")), indep_vars = list(c("is_treatment", "is_post", "is_post:is_treatment"))),
+    tibble(specification_name = "pre", expand_grid(dep_var_form = c("level", "log1"), dep_var = c("don_count", "don_total_usd", "don_mean_usd")), indep_vars = list(c("is_treatment", "is_pre", "is_post", "is_pre:is_treatment", "is_post:is_treatment"))),
+    # tibble(specification_name = "daylight", expand_grid(dep_var_form = c("level", "log1"), dep_var = c("don_count", "don_total_usd", "don_mean_usd")), indep_vars = list(c("is_treatment", "is_daylight", "is_pre", "is_post", "is_daylight:is_treatment", "is_pre:is_treatment", "is_post:is_treatment")))
+  ))),
+  tibble(name = "different_two", aggregation = "type", omit_crypto = TRUE, distinct_dates = TRUE, specifications = list(bind_rows(
+    tibble(specification_name = "normal", expand_grid(dep_var_form = c("level", "log1"), dep_var = c("don_count", "don_total_usd", "don_mean_usd")), indep_vars = list(c("is_treatment", "is_post", "is_post:is_treatment"))),
+    tibble(specification_name = "pre", expand_grid(dep_var_form = c("level", "log1"), dep_var = c("don_count", "don_total_usd", "don_mean_usd")), indep_vars = list(c("is_treatment", "is_pre", "is_post", "is_pre:is_treatment", "is_post:is_treatment"))),
+    # tibble(specification_name = "daylight", expand_grid(dep_var_form = c("level", "log1"), dep_var = c("don_count", "don_total_usd", "don_mean_usd")), indep_vars = list(c("is_treatment", "is_daylight", "is_pre", "is_post", "is_daylight:is_treatment", "is_pre:is_treatment", "is_post:is_treatment")))
+  ))),
+  tibble(name = "different_many", aggregation = "type_sub", ignore_night = TRUE, omit_crypto = FALSE, distinct_dates = TRUE, estimate_fixef = TRUE, specifications = list(bind_rows(
+    tibble(specification_name = "normal", expand_grid(dep_var_form = c("level", "log1"), dep_var = c("don_count", "don_total_usd", "don_mean_usd")), indep_vars = list(c("is_treated")))
+  ))),
+  tibble(name = "different_many_nofixef", aggregation = "type_sub", ignore_night = TRUE, omit_crypto = FALSE, distinct_dates = TRUE, estimate_fixef = FALSE, specifications = list(bind_rows(
+    tibble(specification_name = "normal", expand_grid(dep_var_form = c("level", "log1"), dep_var = c("don_count", "don_total_usd", "don_mean_usd")), indep_vars = list(c("is_treatment", "is_post", "is_treated")))
+  )))
+  # tibble(name = "different_many", aggregation = "type_sub", ignore_night = TRUE, omit_crypto = FALSE, distinct_dates = FALSE, estimate_fixef = TRUE, specifications = list(bind_rows(
+  #   tibble(specification_name = "dupes", expand_grid(dep_var_form = c("level", "log1"), dep_var = c("don_count", "don_total_usd", "don_mean_usd")), indep_vars = list(c("is_treated")))
+  # )))
+) %>%
+  bind_rows(tibble(name = character(), own_start_h = numeric(), aggregation = character(), pre_offset_h = numeric(), post_offset_h = numeric(), ignore_night = logical(), omit_crypto = logical(), distinct_dates = logical(), estimate_fixef = logical(), specifications = list()), .) %>%
+  replace_na(list(aggregation = "type", pre_offset_h = 48, post_offset_h = 48, ignore_night = FALSE, omit_crypto = TRUE, distinct_dates = TRUE, estimate_fixef = FALSE)) %>%
   rowwise() %>%
-  transmute(date = list(generate_hours(date, start_h, pre_offset_h, post_offset_h))) %>%
-  unnest(date) %>%
-  left_join(data_intraday, by = "date") %>%
-  filter(type != "Crypto") %>%
-  mutate(is_treatment = if_else(type == "Ukrainian", 1, 0)) %>%
-  mutate(is_daylight = if_else(dplyr::between(hour(date), 6, 22), 1, 0)) %>%
-  mutate(time = rel_time + 24) %>%
-  group_by(type)
+  mutate(name = factor(name, levels = name), specifications = list(mutate(specifications, across(c(specification_name, dep_var, dep_var_form), ~factor(., levels = unique(.))))))
 
-# data %>%
-#   ungroup() %>%
-#   mutate(across(c(don_count, don_total_usd, don_mean_usd), log)) %>%
-#   filter(if_any(c(don_count, don_total_usd, don_mean_usd), ~ is.na(.) | is.nan(.) | is.infinite(.)))
+did_mods <- did_specs %>%
+  mutate(data = list(generate_data(data_events, own_start_h, aggregation, pre_offset_h, post_offset_h, ignore_night, omit_crypto, distinct_dates))) %>%
+  mutate(mods = list(generate_models(data, specifications, estimate_fixef, aggregation)))
 
-did <- data.frame(
-  specification = c("normal", "pre", "daylight"),
-  expand_grid(
-    # dep_var = c("log1_don_count", "log1_don_total_usd", "log1_don_mean_usd"),
-    dep_var = c("don_count", "don_total_usd", "don_mean_usd"),
-    indep_vars = list(
-      c("is_treatment", "is_post", "is_post:is_treatment"),
-      c("is_treatment", "is_pre", "is_post", "is_pre:is_treatment", "is_post:is_treatment"),
-      c("is_treatment", "is_daylight", "is_pre", "is_post", "is_daylight:is_treatment", "is_pre:is_treatment", "is_post:is_treatment")
-    )
-  )) %>%
+did_tables <- did_mods %>%
+  select(name, specifications, mods) %>%
+  unnest(c(specifications, mods)) %>%
+  arrange(name, dep_var, specification_name) %>%
+  group_by(name, dep_var_form) %>%
+  summarise(across(.fns = list)) %>%
   rowwise() %>%
-  mutate(eq = list(formula(paste(dep_var, "~", paste(indep_vars, collapse = "+")))),
-         mod = list(lm(eq, data = data)),
-         mod_robust = list(coeftest(mod, vcov = vcovHAC(mod))))
+  mutate(table = list(texreg(mods,
+                             threeparttable = TRUE,
+                             booktabs = TRUE,
+                             dcolumn = TRUE,
+                             stars = c(0.01, 0.05, 0.1))))
 
-did %>%
-  # mutate(dep_var = list(switch(dep_var, don_count = "Count", don_total_usd = "Total value (USD)", don_mean_usd = "Mean value (USD)"))) %>%
-  with({ screenreg(mod_robust,
-                custom.header = set_names(split(seq_along(mod), cut(seq_along(mod), length(unique(dep_var)), labels = FALSE)), unique(dep_var)),
-                custom.model.names = rep(" ", length(mod)),
-                dcolumn = TRUE, booktabs = TRUE, threeparttable = TRUE,
-                stars = c(0.001, 0.01, 0.05, 0.10),
-                caption = "D-i-D analysis for hourly donation characteristics (levels).",
-                custom.note = "
-                \\item %stars \\\\
-                \\item $is\\_treatment = 1$ for Ukrainian donations, $is\\_active = 1$ for 06:00 until 23:59 for days with events, $is\\_pre = 1$ for 06:00 previous day until 05:59 for days with events, $is\\_daylight = 1$ for 06:00 until 22:00 for all days."
-  ) })
+did_tables$table[[7]] %>% write("results/latex_did/main.tex")
 
-### Dynamic
-data_dynamic <- data %>%
-  mutate(rel_time = apply(cbind(sapply((-floor(pre_offset_h[[1]] / group_n[[1]])):(floor((end_offset_h[[1]] - 1) / group_n[[1]])), \(x) ifelse(data.table::shift(is_active, x, type = "lag", fill = 0) == 1 & hour(data.table::shift(date, x, type = "lag", fill = 0)) == start_h[[1]], x, NA))), 1, \(x) if(all(is.na(x))) NA else sum(x, na.rm = TRUE))) %>%
-  fastDummies::dummy_cols("rel_time") %>%
-  filter(!is.na(rel_time)) %>%
-  mutate(across(starts_with("rel_time"), replace_na, 0))
+# TODO: Re-check the DiD specification, the way standard errors are calculated, whether to use date or relative time fixed effects, whether to use "event" fixed effects
+# Current specification `different_many_nofixef` is a "basic" (no-fixed effect) DiD regression *with duplicate dates removed!!!!*
 
-did_dynamic <- data.frame(
-  # specification = c("normal", "daylight"),
-  specification = c("normal"),
-  expand_grid(
-    dep_var = c("don_count", "don_total_usd", "don_mean_usd"),
-    indep_vars = list(c("is_treatment", glue("`rel_time_{setdiff((min(data_dynamic$rel_time, na.rm = TRUE)):(max(data_dynamic$rel_time, na.rm = TRUE)), -1)}`"), glue("is_treatment:`rel_time_{setdiff((min(data_dynamic$rel_time, na.rm = TRUE)):(max(data_dynamic$rel_time, na.rm = TRUE)), -1)}`")))
-  )) %>%
-  rowwise() %>%
-  mutate(eq = list(formula(paste(dep_var, "~", paste(indep_vars, collapse = "+")))),
-         mod = list(lm(eq, data = data_dynamic)),
-         mod_robust = list(coeftest(mod, vcov = vcovHAC(mod))),
-         mod_robust_ci = list(coefci(mod, vcov = vcovHAC(mod)))
-  )
+### PLOT
+scaling <- 40
 
-screenreg(did_dynamic$mod_robust)
-summary(did_dynamic$mod[[1]])
+# Select last specification's data
+data_did <- did_mods$data[[4]] %>%
+  # Average over treatment/control groups
+  group_by(is_treatment, rel_time) %>%
+  summarise(across(c(don_count, don_total_usd, don_mean_usd), mean), .groups = "drop") %>%
+  mutate(don_count = if_else(is_treatment == 0, don_count * scaling, don_count)) %>%
+  mutate(don_mean_usd = if_else(is_treatment == 0, don_mean_usd / scaling, don_mean_usd)) %>%
+  pivot_longer(contains("don")) %>%
+  group_by(is_treatment,
+           is_post = if_else(rel_time < 0, 0, 1),
+           name) %>%
+  mutate(mean = mean(value)) %>%
+  group_by(is_treatment, name) %>%
+  mutate(value = rollapply(value, 5, mean, partial = TRUE)) %>%
+  ungroup()
 
-did_dynamic %>%
-  mutate(coef_name = list(names(mod$coefficients)),
-         coef = list(mod$coefficients),
-         coef_ci_low = list(mod_robust_ci[, 1]),
-         coef_ci_high = list(mod_robust_ci[, 2])
-         ) %>%
-  select(specification, dep_var, starts_with("coef")) %>%
-  unnest_longer(starts_with("coef"), indices_include = FALSE) %>%
-  filter(str_detect(coef_name, "is_treatment")) %>%
-  mutate(coef_name = if_else(coef_name == "is_treatment", "is_treatment:`rel_time_-1`", coef_name)) %>%
-  mutate(coef_name = as.numeric(str_extract(coef_name, "-?\\d+"))) %>%
-  group_by(specification, dep_var) %>%
-  arrange(coef_name, .by_group = TRUE) %>%
-  ggplot(aes(x = coef_name, y = coef)) +
+plot_1 <- data_did %>%
+  mutate(group = factor(is_treatment, levels = c(0, 1), labels = c("Foreign", "Ukrainian")),
+         name = factor(name, levels = unique(name))) %>%
+  filter(name == "don_count") %>%
+  ggplot(aes(x = rel_time, y = value, color = group, group = group)) +
   geom_line() +
-  geom_errorbar(aes(ymin = coef_ci_low, ymax = coef_ci_high)) +
-  facet_grid(vars(dep_var), vars(specification)) +
-  geom_hline(aes(yintercept = 0))
+  geom_line(aes(y = mean, color = group, group = interaction(is_post, group)), linetype = "dashed") +
+  geom_vline(aes(xintercept = 0)) +
+  ylab("don_count_Ukrainian") +
+  scale_y_continuous(sec.axis = sec_axis(~ ./scaling, name = "don_count_Foreign"))
 
+plot_2 <- data_did %>%
+  mutate(group = factor(is_treatment, levels = c(0, 1), labels = c("Foreign", "Ukrainian")),
+         name = factor(name, levels = unique(name))) %>%
+  filter(name == "don_total_usd") %>%
+  ggplot(aes(x = rel_time, y = value, color = group, group = group)) +
+  geom_line() +
+  geom_line(aes(y = mean, color = group, group = interaction(is_post, group)), linetype = "dashed") +
+  geom_vline(aes(xintercept = 0)) +
+  ylab("don_total_usd_Ukrainian") +
+  scale_y_continuous(sec.axis = sec_axis(~ ., name = "don_total_usd_Foreign"))
 
-coeftest(did_dynamic$mod[[1]], vcov = vcovHAC(did_dynamic$mod[[1]]))
-coefci(did_dynamic$mod[[1]], vcov = vcovHAC(did_dynamic$mod[[1]]))
+plot_3 <- data_did %>%
+  mutate(group = factor(is_treatment, levels = c(0, 1), labels = c("Foreign", "Ukrainian")),
+         name = factor(name, levels = unique(name))) %>%
+  filter(name == "don_mean_usd") %>%
+  ggplot(aes(x = rel_time, y = value, color = group, group = group)) +
+  geom_line() +
+  geom_line(aes(y = mean, color = group, group = interaction(is_post, group)), linetype = "dashed") +
+  geom_vline(aes(xintercept = 0)) +
+  ylab("don_mean_usd_Ukrainian") +
+  scale_y_continuous(sec.axis = sec_axis(~ .*scaling, name = "don_mean_usd_Foreign"))
 
-### Stacked
+ggpubr::ggarrange(plot_1, plot_2, plot_3, ncol = 3, common.legend = TRUE, legend = "bottom")
 
-data_stacked <- data_events %>%
-  filter(date >= dmy("16-03-2022")) %>%
-  filter(event_dum == 1) %>%
-  mutate(start_h = 6, pre_offset_h = 24, post_offset_h = 24) %>%
-  rowwise() %>%
-  transmute(time = list(generate_hours(date, start_h, pre_offset_h, post_offset_h))) %>%
-  unnest(time) %>%
-  left_join(data_intraday, by = "date") %>%
-  filter(type != "Crypto") %>%
-  mutate(is_treatment = if_else(type == "Ukrainian", 1, 0)) %>%
-  mutate(is_daylight = if_else(dplyr::between(hour(date), 6, 22), 1, 0)) %>%
-  mutate(time = rel_time + 24) %>%
-  group_by(type) #%>%
-# Normalization?
-# mutate(across(c(don_count, don_total_usd, don_mean_usd), ~ (.x - mean(.x)) / sd(.x)))
+# Select last specification's data
+data_did <- did_mods$data[[4]] %>%
+  # Average over treatment/control groups
+  group_by(is_treatment, rel_time) %>%
+  summarise(across(c(don_count, don_total_usd, don_mean_usd), mean), .groups = "drop") %>%
+  pivot_longer(contains("don")) %>%
+  group_by(is_treatment,
+           is_post = if_else(rel_time < 0, 0, 1),
+           name) %>%
+  mutate(mean = mean(value)) %>%
+  group_by(is_treatment, name) %>%
+  mutate(value = rollapply(value, 5, mean, partial = TRUE)) %>%
+  ungroup()
 
-data_stacked_panel <- data_stacked %>%
-  # mutate(group = paste0(group, "-", is_treatment)) %>%
-  pdata.frame(index = c("group", "rel_time"), row.names = FALSE)
-
-# lm(don_count ~ is_treatment + factor(rel_time) + is_treatment:factor(rel_time), data = data_stacked) %>% summary()
-# tmp <- lm(don_count ~ is_daylight + is_daylight:is_treatment + factor(group) + factor(rel_time) + is_treatment:factor(rel_time), data = data_stacked)
-# lm(don_total_usd ~ 0 + factor(group) + factor(rel_time) + is_treatment:factor(rel_time), data = data_stacked) %>% summary()
-# lm(don_mean_usd ~ factor(group) + factor(rel_time) + is_treatment:factor(rel_time), data = data_stacked) %>% summary()
-
-# did_stacked_count <- plm(don_count ~ is_daylight:is_treatment + is_treatment:factor(rel_time), data = data_stacked_panel, model = "within", effect = "twoways")
-# did_stacked_count %>% summary()
-# did_stacked_count_robust <- coeftest(did_stacked_count, vcov = vcovHC(did_stacked_count, type = "HC1", cluster = "group"))
-#
-# screenreg(list(did_stacked_count, did_stacked_count_robust))
-#
-#
-# did_stacked_total <- plm(don_total_usd ~ is_treatment:factor(rel_time), data = data_stacked_panel, model = "within", effect = "twoways") %>% summary()
-# did_stacked_mean <-  plm(don_mean_usd ~ is_treatment:factor(rel_time), data = data_stacked_panel, model = "within", effect = "twoways") %>% summary()
-#
-# fixest::feols(don_count ~ is_daylight:is_treatment + is_treatment:factor(rel_time) | group + time, data = data_stacked) %>% summary()
-# lfe::felm(don_count ~ is_daylight:is_treatment + is_treatment:factor(rel_time) | group + time | 0 | group, data = data_stacked) %>% summary()
-
-did_stacked <- data.frame(
-  specification = c("normal", "daylight"),
-  expand_grid(
-    dep_var = c("don_count", "don_total_usd", "don_mean_usd"),
-    indep_vars = list("is_treatment:factor(rel_time)",
-                      c("is_daylight:is_treatment", "is_treatment:factor(rel_time)")),
-    # robust = c(FALSE, TRUE)
-  )) %>%
-  rowwise() %>%
-  mutate(eq = list(formula(paste(dep_var, "~", paste(indep_vars, collapse = "+")))),
-         mod = list(plm(eq, data = data_stacked_panel, model = "within", effect = "twoways")),
-         # mod_robust = list(ifelse(robust, coeftest(mod, vcov = vcovHC(mod, type = "HC3", cluster = "group")), mod)))
-         mod_robust = list(coeftest(mod, vcov = vcovHC(mod, type = "HC3", cluster = "group"))))
-
-did_stacked %>%
-  with({ screenreg(mod,
-                   custom.header = set_names(split(seq_along(mod), cut(seq_along(mod), length(unique(dep_var)), labels = FALSE)), unique(dep_var)),
-                   custom.model.names = rep(" ", length(mod)),
-                   dcolumn = TRUE, booktabs = TRUE, threeparttable = TRUE,
-                   stars = c(0.001, 0.01, 0.05, 0.10),
-                   caption = "D-i-D analysis for hourly donation characteristics (levels).",
-                   # custom.note = "
-                   # \\item %stars \\\\
-                   # \\item $is\\_treatment = 1$ for Ukrainian donations, $is\\_active = 1$ for 06:00 until 23:59 for days with events, $is\\_pre = 1$ for 06:00 previous day until 05:59 for days with events, $is\\_daylight = 1$ for 06:00 until 22:00 for all days."
-  ) })
-
-
+data_did %>%
+  mutate(group = factor(is_treatment, levels = c(0, 1), labels = c("Foreign", "Ukrainian")),
+         name = factor(name, levels = unique(name))) %>%
+  ggplot(aes(x = rel_time, y = value, color = group, group = group)) +
+  geom_line() +
+  geom_line(aes(y = mean, color = group, group = interaction(is_post, group)), linetype = "dashed") +
+  geom_vline(aes(xintercept = 0)) +
+  facet_wrap(~name + group, ncol = 2, scales = "free_y")
+# facet_grid(cols = vars(group), rows = vars(name), scales = "free")
