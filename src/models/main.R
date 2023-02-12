@@ -20,7 +20,7 @@ data <- data_raw %>%
   fastDummies::dummy_cols(c(glue("emot_prop_{EMOTIONS}_quint"), glue("dlog_emot_count_{EMOTIONS}_quint"))) %>%
   # Generate weekday dummies
   mutate(weekday = factor(weekdays(date), levels = WEEKDAYS),
-         daysSince = (as.numeric(date - 19047)))
+         days_since = (as.numeric(date - 19047)))
 
 # Get all variables
 vars <- names(data_raw)
@@ -86,7 +86,7 @@ get_eq <- \(dep_var, indep_var, dep_var_form = NA, types = c("Ukrainian", "Forei
   }
 
   indep_var <- paste(indep_var, collapse = "+")
-  map(types, ~as.formula(glue("{dep_var}_{.} ~ {indep_var} + daysSince"))) %>%
+  map(types, ~as.formula(glue("{dep_var}_{.} ~ {indep_var} + days_since"))) %>%
     set_names(types)
 }
 
@@ -137,13 +137,13 @@ mod_tables <- mods %>%
                                       FALSE
          )),
          table_variable_map = list(c("(Intercept)" = "Intercept", "event_positive_dum" = NA, "event_negative_dum" = NA,
-                                     "dlog_siren_count" = NA, "siren_count" = NA, "dlog_siren_mean_duration" = NA, "siren_mean_duration" = NA,  "dlog_strike_air_count" = NA, "dlog_siren_prop" = NA, "siren_prop" = NA,"siren_kyiv_dum" = NA,
+                                     "dlog_siren_count" = NA, "siren_count" = NA, "dlog_siren_mean_duration" = NA, "siren_mean_duration" = NA, "dlog_strike_air_count" = NA, "dlog_siren_prop" = NA, "siren_prop" = NA, "siren_kyiv_dum" = NA,
                                      "dlog_sev_cas_civ_count" = NA, "dlog_sev_cas_rus_mil_count" = NA, "dlog_sev_confl_evs_count" = NA,
                                      "dlog_tweet_count" = NA, "dlog_factiva_count" = NA,
                                      "event_positive_dum:dlog_tweet_count" = NA, "event_negative_dum:dlog_tweet_count" = NA,
                                      emotion_coef_names
-                                        # "weekdayMonday" = NA, "weekdayTuesday" = NA, "weekdayWednesday" = NA, "weekdayThursday" = NA, "weekdayFriday" = NA, "weekdaySaturday" = NA, "weekdaySunday" = NA,
-                                        # "daysSince" = NA
+                                     # "weekdayMonday" = NA, "weekdayTuesday" = NA, "weekdayWednesday" = NA, "weekdayThursday" = NA, "weekdayFriday" = NA, "weekdaySaturday" = NA, "weekdaySunday" = NA,
+                                     # "days_since" = NA
          )),
          # table_variable_map = list(c("(Intercept)" = "Intercept", "event_positive_dum" = "Positive event", "event_negative_dum" = "Negative event",
          #                             "dlog_siren_count" = "Sirens", "siren_count" = "Sirens", "dlog_siren_mean_duration" = "Mean siren duration", "siren_mean_duration" = "Mean siren duration",  "dlog_strike_air_count" = "Air strikes", "dlog_siren_prop" = "Share of Ukraine", "siren_prop" = "Share of Ukraine","siren_kyiv_dum" = "Sirens in Kyiv",
@@ -151,7 +151,7 @@ mod_tables <- mods %>%
          #                             emotion_coef_names,
          #                             "dlog_sev_cas_civ_count" = "Civilian casualties", "dlog_sev_cas_rus_mil_count" = "Russian mil. casualties", "dlog_sev_confl_evs_count" = "Conflict events"
          #                             # "weekdayMonday" = "Monday", "weekdayTuesday" = "Tuesday", "weekdayWednesday" = "Wednesday", "weekdayThursday" = "Thursday", "weekdayFriday" = "Friday", "weekdaySaturday" = "Saturday", "weekdaySunday" = "Sunday",
-         #                             # "daysSince" = "Days since"
+         #                             # "days_since" = "Days since"
          # )),
          table_caption = list(switch(as.character(specification_name),
                                      events = "Donation characteristics and high emotional intensity days.",
@@ -203,8 +203,8 @@ mods_sum <- mods %>%
   unite(dep_var, dep_var_form, dep_var) %>%
   pivot_wider(names_from = name, values_from = coef) %>%
   filter(variable != "(Intercept)" &
-           variable != "daysSince" &
-           variable != "I(daysSince^2)" &
+           variable != "days_since" &
+           variable != "I(days_since^2)" &
            !str_detect(variable, "weekday"))
 
 file.remove("data/models/summary.xlsx")
