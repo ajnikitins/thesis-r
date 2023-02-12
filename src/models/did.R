@@ -146,7 +146,7 @@ did_specs <- list(
   tibble(name = "different_many", aggregation = "type_sub", ignore_night = TRUE, omit_crypto = FALSE, distinct_dates = TRUE, estimate_fixef = TRUE, specifications = list(bind_rows(
     tibble(specification_name = "normal", expand_grid(dep_var_form = c("level", "log1"), dep_var = c("don_count", "don_total_usd", "don_mean_usd")), indep_vars = list(c("is_treated")))
   ))),
-  tibble(name = "different_many_nofixef", aggregation = "type_sub", ignore_night = TRUE, omit_crypto = FALSE, distinct_dates = TRUE, estimate_fixef = FALSE, specifications = list(bind_rows(
+  tibble(name = "different_many_nofixef", aggregation = "type_sub", ignore_night = TRUE, omit_crypto = TRUE, distinct_dates = TRUE, estimate_fixef = FALSE, specifications = list(bind_rows(
     tibble(specification_name = "normal", expand_grid(dep_var_form = c("level", "log1"), dep_var = c("don_count", "don_total_usd", "don_mean_usd")), indep_vars = list(c("is_treatment", "is_post", "is_treated")))
   )))
   # tibble(name = "different_many", aggregation = "type_sub", ignore_night = TRUE, omit_crypto = FALSE, distinct_dates = FALSE, estimate_fixef = TRUE, specifications = list(bind_rows(
