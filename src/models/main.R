@@ -183,6 +183,36 @@ file.copy("src/latex/main.tex", "results/latex_main/main.tex")
 tools::texi2pdf("results/latex_main/main.tex", clean = TRUE)
 file.copy("main.pdf", "results/OLS_results.pdf", overwrite = TRUE)
 
+### Coefficient comparisons (F-tests)
+# Whether events are stronger for foreign
+test_events <- tibble(
+  expand.grid(var = c("don_count", "don_total_usd", "don_mean_usd"), coef = c("event_positive_dum", "event_negative_dum")), type = list(c("Ukrainian", "Foreign")),
+  hypothesis = "equal",
+) %>%
+  rowwise() %>%
+  mutate(mod = filter(mods, specification_name == "events", dep_var == var)$mod,
+         vars = list(map(type, ~paste0(.x, "_", coef))),
+         hypothesis = paste(vars[[1]], "=", vars[[2]])) %>%
+  mutate(result = list(linearHypothesis(mod, hypothesis, vcov = vcovHAC))) %>%
+  mutate(results_presented = apastats::describe.anova(result))
+
+test_events_table <- test_events %>%
+  mutate(p = result[2, 4]) %>%
+  group_by(var) %>%
+  summarise(across(everything(), list)) %>%
+  rowwise() %>%
+  mutate(table_base = list(createTexreg(coef.names = hypothesis, coef = p, pvalues = p, model.name = as.character(var)))) %>%
+  with({
+    texreg(table_base,
+              booktabs = TRUE, dcolumn = TRUE, threeparttable = TRUE, use.packages = FALSE, digits = 3,
+              stars = c(0.01, 0.05, 0.10),
+              caption.above = TRUE,
+              label = "table:events-tests"
+    )
+  })
+
+write(test_events_table, "results/latex_main/event-tests.tex")
+
 # Summary of results (sign and significance)
 mods_sum <- mods %>%
   rowwise() %>%
