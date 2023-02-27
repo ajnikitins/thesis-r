@@ -7,6 +7,8 @@ library(sandwich)
 library(texreg)
 library(glue)
 library(fixest)
+library(ggnewscale)
+library(ggsci)
 
 # Utility for generating times for events
 generate_hours <- \(day, start_h, pre_offset_h, post_offset_h, ignore_night = FALSE) {
@@ -204,35 +206,88 @@ plot_1 <- data_did %>%
          name = factor(name, levels = unique(name))) %>%
   filter(name == "don_count") %>%
   ggplot(aes(x = rel_time, y = value, color = group, group = group)) +
-  geom_line() +
+  scale_colour_manual(values = c("#800000FF", "#4747ba")) +
+  geom_line(linewidth=1.5) +
   geom_line(aes(y = mean, color = group, group = interaction(is_post, group)), linetype = "dashed") +
   geom_vline(aes(xintercept = 0)) +
-  ylab("don_count_Ukrainian") +
-  scale_y_continuous(sec.axis = sec_axis(~ ./scaling, name = "don_count_Foreign"))
+  ylab("Donation count (Ukrainian)") +
+  xlab("") +
+  theme_classic() +
+  theme(axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0)),
+        axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0),
+                                    color = "#4747ba", face= "bold", size = 15),
+        axis.line.y = element_line(color = "#4747ba", linewidth=1),
+        axis.ticks.y = element_line(color = "#4747ba"),
+        axis.text.y = element_text(color = "#4747ba"))
+
+
+plot_1 <- plot_1 + new_scale_color() +
+  scale_y_continuous(sec.axis = sec_axis(~ ./scaling, name = "Donation count (Foreign)")) +
+  theme(axis.title.y.right = element_text(margin = margin(t = 0, r = 0, b = 0, l = 10),
+                                          color = "#800000FF"),
+        axis.line.y.right = element_line(color = "#800000FF"),
+        axis.ticks.y.right = element_line(color = "#800000FF"),
+        axis.text.y.right = element_text(color = "#800000FF"))
+
 
 plot_2 <- data_did %>%
   mutate(group = factor(is_treatment, levels = c(0, 1), labels = c("Foreign", "Ukrainian")),
          name = factor(name, levels = unique(name))) %>%
   filter(name == "don_total_usd") %>%
   ggplot(aes(x = rel_time, y = value, color = group, group = group)) +
-  geom_line() +
+  scale_colour_manual(values = c("#800000FF", "#4747ba")) +
+  geom_line( linewidth=1.5) +
   geom_line(aes(y = mean, color = group, group = interaction(is_post, group)), linetype = "dashed") +
   geom_vline(aes(xintercept = 0)) +
-  ylab("don_total_usd_Ukrainian") +
-  scale_y_continuous(sec.axis = sec_axis(~ ., name = "don_total_usd_Foreign"))
+  ylab("Donation total USD value (Ukrainian)") +
+  xlab(" ") +
+  #scale_y_continuous(sec.axis = sec_axis(~ ., name = "Donation total USD value (Foreign)")) +
+  theme_classic() +
+  theme(axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0),face  = "bold", size = 13),
+        axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0),
+                                    color = "#4747ba", face= "bold", size = 15),
+        axis.line.y = element_line(color = "#4747ba", linewidth=1),
+        axis.ticks.y = element_line(color = "#4747ba"),
+        axis.text.y = element_text(color = "#4747ba"))
+
+plot_2 <- plot_2 + new_scale_color() +
+  scale_y_continuous(sec.axis = sec_axis(~ ., name = "Donation total USD value (Foreign)")) +
+  theme(axis.title.y.right = element_text(margin = margin(t = 0, r = 0, b = 0, l = 10),
+                                          color = "#800000FF"),
+        axis.line.y.right = element_line(color = "#800000FF"),
+        axis.ticks.y.right = element_line(color = "#800000FF"),
+        axis.text.y.right = element_text(color = "#800000FF"))
 
 plot_3 <- data_did %>%
   mutate(group = factor(is_treatment, levels = c(0, 1), labels = c("Foreign", "Ukrainian")),
          name = factor(name, levels = unique(name))) %>%
   filter(name == "don_mean_usd") %>%
   ggplot(aes(x = rel_time, y = value, color = group, group = group)) +
-  geom_line() +
+  scale_color_uchicago() +
+  geom_line( linewidth=1.5) +
   geom_line(aes(y = mean, color = group, group = interaction(is_post, group)), linetype = "dashed") +
   geom_vline(aes(xintercept = 0)) +
-  ylab("don_mean_usd_Ukrainian") +
-  scale_y_continuous(sec.axis = sec_axis(~ .*scaling, name = "don_mean_usd_Foreign"))
+  scale_colour_manual(values = c("#800000FF", "#4747ba")) +
+  ylab("Donation mean USD value (Ukrainian)") +
+  xlab("Event timeline (number of hours before and after the event)") +
+  #scale_y_continuous(sec.axis = sec_axis(~ .*scaling, name = "Donation mean USD value (Foreign)"))+
+  theme_classic() +
+  theme(axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0), face= "bold", size = 15),
+        axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0),
+                                    color = "#4747ba", face= "bold", size = 15),
+        axis.line.y = element_line(color = "#4747ba", linewidth=1),
+        axis.ticks.y = element_line(color = "#4747ba"),
+        axis.text.y = element_text(color = "#4747ba"))
 
-ggpubr::ggarrange(plot_1, plot_2, plot_3, ncol = 3, common.legend = TRUE, legend = "bottom")
+plot_3 <- plot_3 + new_scale_color() +
+  scale_y_continuous(sec.axis = sec_axis(~ .*scaling, name = "Donation mean USD value (Foreign)")) +
+  theme(axis.title.y.right = element_text(margin = margin(t = 0, r = 0, b = 0, l = 10),
+                                          color ="#800000FF"),
+        axis.line.y.right = element_line(color = "#800000FF"),
+        axis.ticks.y.right = element_line(color = "#800000FF"),
+        axis.text.y.right = element_text(color = "#800000FF"))
+
+ggpubr::ggarrange(plot_1, plot_2, plot_3, ncol = 1, legend = FALSE)
 
 # Select last specification's data
 data_did <- did_mods$data[[4]] %>%
