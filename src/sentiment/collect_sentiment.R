@@ -46,3 +46,30 @@ sentiments <- raw_sentiments %>%
 saveRDS(sentiments, "data/sentiment/data_sentiments.RDS")
 
 db$disconnect()
+
+## Machine learning emotions
+
+# Connect to db
+db <- mongo(collection = "emotions_ml", db = "thesis-data", url = Sys.getenv("MONGO_URL"))
+
+# Get daily emotions
+pipeline_emotions_ml <- '[{"$lookup": {"from": "tweets", "localField": "_id", "foreignField": "_id", "pipeline": [{"$project": {"_id": 0, "created_at": 1}}], "as": "result"}}, {"$unwind": {"path": "$result"}}, {"$project": {"date": {"$dateFromString": {"dateString": "$result.created_at"}}, "main_emotion": 1}}, {"$group": {"_id": {"date": {"$dateTrunc": {"date": "$date", "unit": "day"}}, "emotion": "$main_emotion"}, "count": {"$count": {}}}}, {"$group": {"_id": "$_id.date", "emotions": {"$push": {"k": "$_id.emotion", "v": "$count"}}}}, {"$project": {"_id": 0, "date": "$_id", "emotions": {"$arrayToObject": "$emotions"}}}, {"$sort": {"date": 1}}]'
+raw_emotions_ml <- db$aggregate(pipeline = pipeline_emotions_ml)
+
+saveRDS(raw_emotions_ml, "data/sentiment/data_emotions_ml_raw.RDS")
+
+# raw_emotions_ml <- readRDS("data/sentiment/data_emotions_raw.RDS")
+
+# Process daily emotions
+emotions_ml <- raw_emotions_ml %>%
+  unnest_wider(emotions) %>%
+  mutate(date = as_date(date),
+         across(-date, ~ replace_na(., 0), .names = "emot_count_{.col}"),
+         .keep = "unused") %>%
+  rowwise() %>%
+  mutate(across(starts_with("emot"), ~ . / sum(c_across(starts_with("emot"))), .names = "emot_prop_{str_remove(.col, 'emot_count_')}")) %>%
+  ungroup()
+
+saveRDS(emotions_ml, "data/sentiment/data_emotions_ml.RDS")
+
+db$disconnect()
