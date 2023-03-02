@@ -42,7 +42,7 @@ saveRDS(btc_data, "data/crypto/data_btc.RDS")
 
 # Load BTC/USD exchange rate data
 btc_data_rate <- read.csv("data/crypto/Bitstamp_BTCUSD_2022_minute.csv", skip = 1, header = TRUE) %>%
-  mutate(date = as_datetime(date))
+  mutate(date = dmy_hm(date))
 
 # Collect txs data into a single data frame
 btc_data_txs_raw <- lapply(btc_data, \(set) {
@@ -55,7 +55,7 @@ btc_data_txs_raw <- lapply(btc_data, \(set) {
   txs$exch_rate <- btc_data_rate[match(floor_date(txs$time, unit = "minute"), btc_data_rate$date), "close"]
   txs$result <- txs$result / 100000000
   txs$result_usd <- txs$result * txs$exch_rate
-  txs$name <- (subset(btc_addresses, address == tolower(set$address)))[["name"]]
+  txs$name <- (subset(btc_addresses, tolower(address) == tolower(set$address)))[["name"]]
 
   txs
 }) %>%
