@@ -9,7 +9,11 @@ data_strikes <- readRDS("data/data_strikes.RDS")
 data_tweet_count <- readRDS("data/tweets/count/data_tweet_count_day.RDS")
 data_factiva <- readRDS("data/factiva.RDS")
 data_severity <- readRDS("data/severity/data_severity.RDS")
-data_emotions <- readRDS("data/sentiment/data_emotions.RDS")
+data_emotions <- readRDS("data/sentiment/data_emotions.RDS") %>%
+  rename(emot_count_neutral = emot_count_mixed, emot_prop_neutral = emot_prop_mixed) %>%
+  rename_with(~ paste0(., "_dict"), -date)
+data_emotions_ml <- readRDS("data/sentiment/data_emotions_ml.RDS") %>%
+  rename_with(~ paste0(., "_ml"), -date)
 data_sentiments <- readRDS("data/sentiment/data_sentiments.RDS")
 data_events_raw <- read_excel("data/important_events_hourly.xlsx")
 
@@ -26,6 +30,7 @@ data_complete_full <- data_donations %>%
   left_join(data_strikes, by = "date") %>%
   left_join(data_tweet_count, by = "date") %>%
   left_join(data_emotions, by = "date") %>%
+  left_join(data_emotions_ml, by = "date") %>%
   left_join(data_sentiments, by = "date") %>%
   left_join(data_factiva, by = "date") %>%
   left_join(data_severity, by = "date") %>%
