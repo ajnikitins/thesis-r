@@ -22,7 +22,7 @@ data_tweet_count_raw <- count_all_tweets(
 
 # Reformat raw twitter counts
 data_tweet_count <- data_tweet_count_raw %>%
-  mutate(date = if (Sys.getenv('TWITTER_COUNT_GRANULARITY') == "day") ymd(start) else ymd_hms(start)) %>%
+  mutate(date = if (Sys.getenv('TWITTER_COUNT_GRANULARITY') == "day") floor_date(ymd_hms(start), unit = "days") else ymd_hms(start)) %>%
   select(date, tweet_count) %>%
   arrange(date)
 
