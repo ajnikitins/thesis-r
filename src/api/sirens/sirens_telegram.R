@@ -7,7 +7,7 @@ library(multidplyr)
 # TODO: Convert to minute-by-minute (when possible)
 
 # Load data
-data_sirens_oblast_raw <- read.csv("src/api/sirens/ukrainian-air-raid-sirens-dataset/datasets/oblasts_only.csv", header = TRUE, encoding = "UTF-8")
+data_sirens_oblast_raw <- read.csv("src/api/sirens/ukrainian-air-raid-sirens-dataset/datasets/volunteer_data_en.csv", header = TRUE, encoding = "UTF-8")
 
 # Format oblast-siren level data
 data_sirens_oblast <- data_sirens_oblast_raw %>%
@@ -41,7 +41,7 @@ data_sirens <- expand(data_sirens_oblast,
             siren_mean_duration = sum(siren_total_duration) / sum(siren_count),
             siren_mean_duration = if_else(is.nan(siren_mean_duration), 0, siren_mean_duration),
             siren_prop = sum(siren_has) / n(),
-            siren_kyiv_dum = if_else(any(siren_has == 1 & (region == "Київ" | region == "Київська область")), 1, 0)) %>%
+            siren_kyiv_dum = if_else(any(siren_has == 1 & (region == "Kyivska oblast" | region == "Kyiv City")), 1, 0)) %>%
   right_join(expand(., date = seq(dmy("01-01-2022"), max(date), by = 1)), by = "date") %>%
   mutate(across(-date, ~ replace_na(., 0))) %>%
   arrange(date)
