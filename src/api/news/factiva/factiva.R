@@ -82,4 +82,4 @@ walk(dates, \(date) {
 
 browser$close()
 
-saveRDS(res, "data/factiva.RDS")
+saveRDS(res, "data/news/factiva.RDS")

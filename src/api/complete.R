@@ -7,7 +7,7 @@ data_donations <- readRDS("data/data_donations.RDS")
 data_sirens <- readRDS("data/sirens/data_sirens.RDS")
 data_strikes <- readRDS("data/data_strikes.RDS")
 data_tweet_count <- readRDS("data/tweets/count/data_tweet_count_day.RDS")
-data_factiva <- readRDS("data/factiva.RDS")
+data_factiva <- readRDS("data/news/factiva.RDS")
 data_severity <- readRDS("data/severity/data_severity.RDS")
 data_emotions <- readRDS("data/sentiment/data_emotions.RDS") %>%
   rename(emot_count_neutral = emot_count_mixed, emot_prop_neutral = emot_prop_mixed) %>%
