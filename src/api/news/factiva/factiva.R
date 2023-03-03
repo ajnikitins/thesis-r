@@ -73,7 +73,7 @@ walk(dates, \(date) {
     str_extract("(?<=C:)\\d*")
 
   print(glue("Date: {date}, factiva_count: {result}"))
-  res <<- add_row(res, date = date, factiva_count = as.numeric(result))
+  res <<- add_row(res, date = date, news_factiva_count = as.numeric(result))
 
   Sys.sleep(4)
   browser$findElement(using = "id", value = "btnModifySearch")$clickElement()
@@ -82,4 +82,4 @@ walk(dates, \(date) {
 
 browser$close()
 
-saveRDS(res, "data/news/factiva.RDS")
+saveRDS(res, "data/news/data_news_factiva.RDS")
