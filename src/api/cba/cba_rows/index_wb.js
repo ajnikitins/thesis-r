@@ -8,22 +8,27 @@ import StealthPlugin from "puppeteer-extra-plugin-stealth"
 puppeteer.use(StealthPlugin())
 
 const getLastPage = async (subdir) => {
-  let path = subdir ? `../../../../data/cba_rows/${subdir}`
-      : "../../../../data/cba_rows"
+  let path = subdir ? `../../../../data_manual/cba_rows/${subdir}`
+      : "../../../../data_manual/cba_rows"
 
   let files = await fs.readdir(path)
-  return files
-  .filter((fileName) => fileName.endsWith(".json"))
-  .map((fileName) =>
-      parseInt(fileName
-      .split(".")[0]
-      .split("-")[1]))
-  .sort((a, b) => a - b)
-  .slice(-1)[0]
+
+  if (files.length === 0) {
+    return 0
+  } else {
+    return files
+    .filter((fileName) => fileName.endsWith(".json"))
+    .map((fileName) =>
+        parseInt(fileName
+        .split(".")[0]
+        .split("-")[1]))
+    .sort((a, b) => a - b)
+    .slice(-1)[0]
+  }
 }
 
 // Settings
-let MAX_PAGE = 64384 // Max page to get
+let MAX_PAGE = 34540 // Max page to get
 let BATCH_SIZE = 4 // Number of pages in one batch (tolerance size for failed
 let PAR_REQS = 4 // Number of requests executed in parallel
 
@@ -73,7 +78,7 @@ puppeteer.launch({headless: false, executablePath: executablePath()}).then(
             let res = await bluebird.map(batch, async (pageID) => {
               return await page.evaluate(async (page) => {
                 return await fetch(
-                    `https://savelife.in.ua/wp-json/savelife/reporting/income?date_from=2022-01-01T00:00:00&date_to=2022-10-31T23:59:59&amount_from=0&amount_to=85467079&keyword=&page=${page}&per_page=20`)
+                    `https://savelife.in.ua/wp-json/savelife/reporting/income?date_from=2022-11-01T00:00:00&date_to=2023-02-28T23:59:59&amount_from=-100000&amount_to=1000000000&page=${page}&per_page=20`)
                 .then((res) => res.json())
               }, pageID)
             }, { concurrency: PAR_REQS })
@@ -92,7 +97,7 @@ puppeteer.launch({headless: false, executablePath: executablePath()}).then(
         if (rows.length > 0) {
           console.log(`Exporting pages ${lastPage + 1} to ${lastBatch[lastBatch.length - 1]}`)
           await fs.writeFile(
-              `../../../../data/cba_rows/${lastPage + 1}-${lastBatch[lastBatch.length - 1]}.json`,
+              `../../../../data_manual/cba_rows/${lastPage + 1}-${lastBatch[lastBatch.length - 1]}.json`,
               JSON.stringify(rows))
         }
       }

@@ -5,7 +5,7 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "run": "forever index.js",
+    "run": "forever index_wb.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
@@ -13,9 +13,9 @@
   "license": "ISC",
   "dependencies": {
     "bluebird": "^3.7.2",
-    "puppeteer": "^19.2.2",
+    "puppeteer": "^19.7.2",
     "puppeteer-cluster": "^0.23.0",
-    "puppeteer-extra": "^3.3.4",
-    "puppeteer-extra-plugin-stealth": "^2.11.1"
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2"
   }
 }
