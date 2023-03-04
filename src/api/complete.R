@@ -7,7 +7,8 @@ data_donations <- readRDS("data/data_donations.RDS")
 data_sirens <- readRDS("data/sirens/data_sirens.RDS")
 data_strikes <- readRDS("data/data_strikes.RDS")
 data_tweet_count <- readRDS("data/tweets/count/data_tweet_count_day.RDS")
-data_factiva <- readRDS("data/news/factiva.RDS")
+data_news_factiva <- readRDS("data/news/data_news_factiva.RDS")
+data_news_euro <- readRDS("data/news/data_news_euro.RDS")
 data_severity <- readRDS("data/severity/data_severity.RDS")
 data_emotions <- readRDS("data/sentiment/data_emotions.RDS") %>%
   rename(emot_count_neutral = emot_count_mixed, emot_prop_neutral = emot_prop_mixed) %>%
@@ -32,11 +33,12 @@ data_complete_full <- data_donations %>%
   left_join(data_emotions, by = "date") %>%
   left_join(data_emotions_ml, by = "date") %>%
   left_join(data_sentiments, by = "date") %>%
-  left_join(data_factiva, by = "date") %>%
+  left_join(data_news_factiva, by = "date") %>%
+  left_join(data_news_euro, by = "date") %>%
   left_join(data_severity, by = "date") %>%
   mutate(across(c(-date, -type), ~ replace_na(., 0))) %>%
+  mutate(date = ymd(date)) %>%
   group_by(type) %>%
-  mutate(date = as_date(date)) %>%
   mutate(across(c(-date, -contains("dum")), ~log(.), .names = "log_{.col}"),
          across(c(-date, -contains("dum"), -contains("log_")), ~. - dplyr::lag(.), .names = "d_{.col}"),
          across(c(-date, -contains("dum"), -starts_with(c("d_", "log_"))), ~log(.) - log(dplyr::lag(.)), .names = "dlog_{.col}"))
