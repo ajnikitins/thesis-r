@@ -1,81 +1,108 @@
-import { promises as fs } from "fs";
-// puppeteer-extra is a drop-in replacement for puppeteer,
-// it augments the installed puppeteer with plugin functionality.
-// Any number of plugins can be added through `puppeteer.use()`
-import puppeteer from "puppeteer-extra";
-import { executablePath } from "puppeteer";
+import {promises as fs} from "fs"
+import bluebird from "bluebird"
 
-// Add stealth plugin and use defaults (all tricks to hide puppeteer usage)
+import { executablePath } from "puppeteer"
+import puppeteer from "puppeteer-extra"
 import StealthPlugin from "puppeteer-extra-plugin-stealth"
+
 puppeteer.use(StealthPlugin())
 
 const getLastPage = async (subdir) => {
-  let path = subdir ? `../../../../data/cba_rows/${subdir}` : "../../../../data/cba_rows"
+  let path = subdir ? `../../../../data_manual/cba_rows/${subdir}`
+      : "../../../../data_manual/cba_rows"
 
   let files = await fs.readdir(path)
-  return files
-  .filter((fileName) => fileName.endsWith(".json"))
-  .map((fileName) =>
-      parseInt(fileName
-      .split(".")[0]
-      .split("-")[1]))
-  .sort((a, b) => a - b)
-  .slice(-1)[0]
+
+  if (files.length === 0) {
+    return 0
+  } else {
+    return files
+    .filter((fileName) => fileName.endsWith(".json"))
+    .map((fileName) =>
+        parseInt(fileName
+        .split(".")[0]
+        .split("-")[1]))
+    .sort((a, b) => a - b)
+    .slice(-1)[0]
+  }
 }
 
-puppeteer.launch({ headless: false, executablePath: executablePath() }).then(async browser => {
-  const page = await browser.newPage()
-  await page.setViewport({ width: 800, height: 600 })
+// Settings
+let MAX_PAGE = 34540 // Max page to get
+let BATCH_SIZE = 4 // Number of pages in one batch (tolerance size for failed
+let PAR_REQS = 4 // Number of requests executed in parallel
 
-  // Get last written page
-  let lastPage = await getLastPage()
-  console.log(`Last found page is ${lastPage}`)
+puppeteer.launch({headless: false, executablePath: executablePath()}).then(
+    async browser => {
+      const page = await browser.newPage()
+      await page.setViewport({width: 800, height: 600})
 
-  // Start main loop
-  while (lastPage < 15113) {
-    // Start navigation
-    console.log(`Navigating to savelife.in.ua`)
-    await page.goto('https://savelife.in.ua/reporting')
+      // Start main loop
+      for (let lastPage = await getLastPage(); lastPage < MAX_PAGE; lastPage = await getLastPage()) {
+        console.log(`Last found page is ${lastPage}`)
 
-    // Wait till the Cloudflare waiting room has ended
-    const incomeContainerSelector = ".income-container"
-    await page.waitForSelector(incomeContainerSelector, { timeout: 0 })
+        // Start navigation
+        console.log(`Navigating to savelife.in.ua`)
+        await page.goto('https://savelife.in.ua/reporting')
 
-    // Initialize variables
-    let rows = [];
-    let queriedPage = lastPage + 1;
+        // Wait till the Cloudflare waiting room has ended
+        const incomeContainerSelector = ".income-container"
+        await page.waitForSelector(incomeContainerSelector, {timeout: 0})
 
-    // Main request loop
-    for (; queriedPage <=  15113; queriedPage++) {
-      console.log(`Requesting page ${queriedPage}`)
+        // Initialize batches
+        let remainingPages = MAX_PAGE - lastPage
+        let batches = Array(remainingPages).fill()
+        // Create a sequence from lastPage + 1 to MAX_PAGE
+        .map((e, index) => index + 1 + lastPage)
+        // Split it into chunks of BATCH_SIZE pages
+        .reduce((resultArray, item, index) => {
+          const chunkIndex = Math.floor(index / BATCH_SIZE)
 
-      // Try to request a page, if it errors, then assume the Cloudflare timer ended, export the collected rows and refresh
-      try {
-        let res = await page.evaluate(async (queriedPage) => {
-          return await fetch(`https://savelife.in.ua/wp-json/savelife/reporting/income?date_from=2022-01-01T00:00:00&date_to=2022-10-31T23:59:59&amount_from=0&amount_to=85467079&keyword=&page=${queriedPage}&per_page=20`)
-          .then((res) => res.json())
-        }, queriedPage)
-        rows.push(res)
-      } catch (e) {
-        console.error(e)
-        console.error(`Failed to get page ${queriedPage}, exporting and reloading...`)
-        // Rolling back the last queried page
-        queriedPage -= 1
-        break
+          if (!resultArray[chunkIndex]) {
+            resultArray[chunkIndex] = []
+          } // start a new chunk
+
+          resultArray[chunkIndex].push(item)
+
+          return resultArray
+        }, [])
+
+        let rows = []
+        let lastBatch = []
+        // Main request loop
+        for (let batch of batches) {
+          console.log(`Requesting batch ${batch}`)
+
+          // Try to request a page, if it errors, then assume the Cloudflare timer ended, export the collected rows and refresh
+          try {
+            let res = await bluebird.map(batch, async (pageID) => {
+              return await page.evaluate(async (page) => {
+                return await fetch(
+                    `https://savelife.in.ua/wp-json/savelife/reporting/income?date_from=2022-11-01T00:00:00&date_to=2023-02-28T23:59:59&amount_from=-100000&amount_to=1000000000&page=${page}&per_page=20`)
+                .then((res) => res.json())
+              }, pageID)
+            }, { concurrency: PAR_REQS })
+            // Push to result array
+            rows = rows.concat(res)
+            // Set last successful batch
+            lastBatch = batch
+          } catch (e) {
+            console.error(e)
+            console.error(`Failed to get batch ${batch}, exporting and reloading...`)
+            break
+          }
+        }
+
+        // Exporting scraped rows
+        if (rows.length > 0) {
+          console.log(`Exporting pages ${lastPage + 1} to ${lastBatch[lastBatch.length - 1]}`)
+          await fs.writeFile(
+              `../../../../data_manual/cba_rows/${lastPage + 1}-${lastBatch[lastBatch.length - 1]}.json`,
+              JSON.stringify(rows))
+        }
       }
-    }
 
-    // Exporting scraped rows
-    if (rows.length > 0) {
-      console.log(`Exporting pages ${lastPage + 1} to ${queriedPage}`)
-      await fs.writeFile(`../../../../data/cba_rows/${lastPage + 1}-${queriedPage}.json`,
-          JSON.stringify(rows))
-    }
-
-    lastPage = queriedPage
-  }
-
-  // Clean up
-  console.log("Scraping has ended successfully, exiting...")
-  await browser.close()
-})
+      // Clean up
+      console.log("Scraping has ended successfully, exiting...")
+      await browser.close()
+    })

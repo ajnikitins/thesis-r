@@ -5,7 +5,7 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "run": "forever index_wb.js",
+    "run": "forever index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
