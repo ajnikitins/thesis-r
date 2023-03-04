@@ -14,7 +14,7 @@ data_tweet_raw <- get_all_tweets(
   is_reply = FALSE,
   is_quote = FALSE,
   remove_promoted = TRUE,
-  data_path = "data/tweets/raw/",
+  data_path = "data_manual/tweets/raw/",
   bind_tweets = FALSE,
   export_query = TRUE
 )

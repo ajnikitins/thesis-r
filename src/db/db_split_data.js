@@ -14,7 +14,12 @@ db.temp_users.aggregate([
   }},
   {$replaceRoot: {newRoot: '$places'}},
   {$addFields: {'_id': '$id', 'id': 0}},
-  {$out: 'places'}
+  {$merge: {
+    into: 'places',
+      on: '_id',
+      whenMatched: 'replace'
+  }}
+  // {$out: 'places'}
 ])
 
 // Split users from users
@@ -29,7 +34,12 @@ db.temp_users.aggregate([
   {$replaceRoot: {newRoot: '$users'}},
   {$addFields: {'_id': '$id'}},
   {$unset: "id"},
-  {$out: 'users'}
+  {$merge: {
+      into: 'users',
+      on: '_id',
+      whenMatched: 'replace'
+  }}
+  // {$out: 'users'}
 ])
 
 db.temp_users.drop()
@@ -37,7 +47,12 @@ db.temp_users.drop()
 db.temp_tweets.aggregate([
   {$addFields: {'_id': '$id'}},
   {$unset: "id"},
-  {$out: 'tweets'}
+  {$merge: {
+      into: 'tweets',
+      on: '_id',
+      whenMatched: 'replace'
+  }}
+  // {$out: 'tweets'}
 ])
 
-db.temp_tweets.drop()
+// db.temp_tweets.drop()
