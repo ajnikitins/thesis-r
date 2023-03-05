@@ -1,8 +1,9 @@
 library(tidyverse)
 library(lubridate)
+library(glue)
 
 # Merge fiat and crypto donations
-data_cba <- readRDS("data/cba/data_cba_rows_usd.RDS")
+data_cba <- readRDS("data/cba/data_cba_rows.RDS")
 data_crypto <- readRDS("data/crypto/data_crypto.RDS")
 
 data_donations_hourly_sub <- bind_rows(data_cba, data_crypto) %>%
@@ -23,7 +24,7 @@ data_donations_hourly_sub <- bind_rows(data_cba, data_crypto) %>%
     ),
     .keep = "unused") %>%
   # Filter to period
-  filter(date %within% interval("2022-01-01 00:00:00", "2022-10-31 23:59:59")) %>%
+  filter(date %within% interval("2022-01-01 00:00:00", "2023-02-28 23:59:59")) %>%
   # Trim bottom and top 1% of donations
   group_by(type, type_sub) %>%
   filter(dplyr::between(value_usd, quantile(value_usd, 0.01), quantile(value_usd, 0.99))) %>%
@@ -41,7 +42,7 @@ aggregate_donations <- \(main, grouping_vars, date_floor) {
       mutate(date = floor_date(date, unit = date_floor)) %>%
       group_by(across(all_of(grouping_vars)), date) %>%
       summarise(across(c(don_count, don_total, don_total_usd), sum), don_mean = don_total / don_count, don_mean_usd = don_total_usd / don_count, .groups = "drop") %>%
-      mutate(across(-c(date, grouping_vars), ~ replace_na(., 0))) %>%
+      mutate(across(-c(date, all_of(grouping_vars)), ~ replace_na(., 0))) %>%
       arrange(across(grouping_vars), date)
 }
 
