@@ -28,8 +28,8 @@ const getLastPage = async (subdir) => {
 }
 
 // Settings
-let MAX_PAGE = 34540 // Max page to get
-let BATCH_SIZE = 4 // Number of pages in one batch (tolerance size for failed
+let MAX_PAGE = 3964 // Max page to get
+let BATCH_SIZE = 4 // Number of pages in one batch (tolerance size for a failed request)
 let PAR_REQS = 4 // Number of requests executed in parallel
 
 puppeteer.launch({headless: false, executablePath: executablePath()}).then(
@@ -78,7 +78,7 @@ puppeteer.launch({headless: false, executablePath: executablePath()}).then(
             let res = await bluebird.map(batch, async (pageID) => {
               return await page.evaluate(async (page) => {
                 return await fetch(
-                    `https://savelife.in.ua/wp-json/savelife/reporting/income?date_from=2022-11-01T00:00:00&date_to=2023-02-28T23:59:59&amount_from=-100000&amount_to=1000000000&page=${page}&per_page=20`)
+                    `https://savelife.in.ua/wp-json/savelife/reporting/income?date_from=2022-01-01T00:00:00&date_to=2023-02-28T23:59:59&amount_from=-12012&amount_to=85467079&page=${page}&per_page=500`)
                 .then((res) => res.json())
               }, pageID)
             }, { concurrency: PAR_REQS })
