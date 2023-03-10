@@ -21,12 +21,10 @@ data_sev_cas_civ <- read.csv("data/severity/Data_ ReliefWeb Crisis Figures Data 
          date = ymd(date)) %>%
   arrange(date) %>%
   mutate(sev_cas_civ_count = sev_cas_civ_count - dplyr::lag(sev_cas_civ_count)) %>%
-  add_row(date = ymd("2023-02-28")) %>%
   right_join(tidyr::expand(., date = full_seq(date, 1)), by = "date") %>%
   arrange(date) %>%
   fill(sev_cas_civ_count) %>%
   mutate(sev_cas_civ_count = replace_na(sev_cas_civ_count, 0))
-  arrange(date)
 
 # # From https://www.statista.com/statistics/1296924/ukraine-war-casualties-daily/
 # data_sev_cas_civ <- read_excel("data/severity/UN_civ_casualties.xlsx") %>%
@@ -102,7 +100,7 @@ data_sev_cas_rus_agg <- data_sev_cas_rus %>%
 
 ## Conflict events
 # From https://acleddata.com/ukraine-crisis/#data
-data_sev_confl_evs_count <- read_excel("data/severity/Ukraine_Black_Sea_2020_2022_Nov04.xlsx") %>%
+data_sev_confl_evs_count <- read_excel("data/severity/Ukraine_Black_Sea_2020_2023_Mar03.xlsx") %>%
   select(date = EVENT_DATE) %>%
   group_by(date) %>%
   summarise(sev_confl_evs_count = n())
@@ -113,6 +111,6 @@ data_severity <- data_sev_cas_civ %>%
   select(date, sev_cas_civ_count) %>%
   left_join(data_sev_cas_rus_agg, by = "date") %>%
   left_join(data_sev_confl_evs_count, by = "date") %>%
-  filter(date <= "2022-10-31")
+  filter(date <= "2023-02-28")
 
 saveRDS(data_severity, "data/severity/data_severity.RDS")
