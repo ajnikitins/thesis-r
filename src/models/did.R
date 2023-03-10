@@ -71,7 +71,7 @@ generate_hours <- \(day, start_h, pre_offset_h, post_offset_h, ignore_night = FA
   post <- data.frame(date = generate_time_sequence(start_date, post_date - 3600, ignore_night, "forward"), rel_time = 0:(post_offset_h - 1), is_post = 1)
 
   dates <- bind_rows(pre, post) %>%
-    mutate(across(c(is_pre, is_post), replace_na, 0),
+    mutate(across(c(is_pre, is_post), ~ replace_na(., 0)),
            is_pre = if_else(rel_time == -1, 0, is_pre),
            group = glue("{year(day)}{month(day)}{day(day)}-{start_h}"))
 }
@@ -101,7 +101,7 @@ generate_data <- \(events, own_start_h, aggregation, pre_offset_h, post_offset_h
     mutate(start_h = if (!is.na(own_start_h)) own_start_h else start_h) %>%
     transmute(date = list(generate_hours(date, start_h, pre_offset_h, post_offset_h, ignore_night = ignore_night))) %>%
     unnest(date) %>%
-    filter(date >= dmy("16-03-2022") & date < dmy("01-11-2022"))
+    filter(date >= dmy("16-03-2022") & date <= dmy("28-02-2023"))
 
   if (distinct_dates) {
     dates <- distinct(dates, date, .keep_all = TRUE)
@@ -131,8 +131,7 @@ data_events <- data_events_raw %>%
   mutate(datetime = with_tz(ymd_hms(datetime, tz = "Europe/Kiev"), tzone = "UTC")) %>%
   transmute(date = date(datetime),
             start_h = hour(datetime),
-            event_dum = if_else(!is.na(coloring), 1, 0, missing = 0)) %>%
-  filter(date != dmy("11-10-2022"))
+            event_dum = if_else(!is.na(coloring), 1, 0, missing = 0))
 
 did_specs <- list(
   tibble(name = "single_two", own_start_h = 12, aggregation = "type", omit_crypto = TRUE, distinct_dates = TRUE, specifications = list(bind_rows(
