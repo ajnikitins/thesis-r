@@ -26,35 +26,67 @@ trainer = Trainer(model=model)
 
 # Setup Mongo
 load_dotenv()
+BATCH_SIZE = 10000
 
 client = MongoClient(os.getenv('MONGO_URL'))
 db = client['thesis-data']
 col_tweets = db['tweets']
+# col_tweets = db['tweets_ukr']
 col_emotions = db['emotions_ml']
+# col_emotions = db['emotions_ml_ukr']
 
+# Get tweets that need to be classified
+tweets = col_tweets.aggregate([
+    {
+        '$match': {
+            'lang': 'en'
+        }
+    }, {
+        '$lookup': {
+            'from': 'emotions_ml',
+            'localField': '_id',
+            'foreignField': '_id',
+            'as': 'is_classified'
+        }
+    }, {
+        '$addFields': {
+            'is_classified': {
+                '$gt': [
+                    {
+                        '$size': '$is_classified'
+                    }, 0
+                ]
+            }
+        }
+    }, {
+        '$match': {
+            'is_classified': False
+        }
+    }
+])
 
-# From how many currently are processed to maximum number of English tweets
-tweet_range = range(3992355, 4173424, 10000)
+batch = list()
+for tweet in tweets:
+    if len(batch) < BATCH_SIZE:
+        batch.append(tweet)
+    else:
+        tweet_text = [d['text'] for d in batch]
+        # Tokenize tweets
+        tokenized_texts = tokenizer(tweet_text, truncation=True, padding=True)
+        pred_dataset = SimpleDataset(tokenized_texts)
 
-for skip in tweet_range:
-    # Load tweets
-    tweets = list(col_tweets.find({'lang': 'en'}, {'text': 1}, skip=skip, limit=10000))
-    tweet_text = [d['text'] for d in tweets]
-    # Tokenize tweets
-    tokenized_texts = tokenizer(tweet_text, truncation=True, padding=True)
-    pred_dataset = SimpleDataset(tokenized_texts)
+        # Run predictions and format the results
+        predictions = trainer.predict(pred_dataset)
+        preds = predictions.predictions.argmax(-1)
+        labels = pd.Series(preds).map(model.config.id2label)
+        # scores = (np.exp(predictions[0])/np.exp(predictions[0]).sum(-1, keepdims=True)).max(1)
+        scores = (np.exp(predictions[0]) / np.exp(predictions[0]).sum(-1, keepdims=True))
+        labels_full = list(model.config.id2label.values())
 
-    # Run predictions and format the results
-    predictions = trainer.predict(pred_dataset)
-    preds = predictions.predictions.argmax(-1)
-    labels = pd.Series(preds).map(model.config.id2label)
-    # scores = (np.exp(predictions[0])/np.exp(predictions[0]).sum(-1, keepdims=True)).max(1)
-    scores = (np.exp(predictions[0]) / np.exp(predictions[0]).sum(-1, keepdims=True))
-    labels_full = list(model.config.id2label.values())
+        scores_df = pd.DataFrame(scores, columns=labels_full)
+        scores_df.insert(0, '_id', [d['_id'] for d in batch])
+        scores_df['main_emotion'] = labels
 
-    scores_df = pd.DataFrame(scores, columns=labels_full)
-    scores_df.insert(0, '_id', [d['_id'] for d in tweets])
-    scores_df['main_emotion'] = labels
-
-    tweets_emot = scores_df.to_dict('records')
-    col_emotions.insert_many(tweets_emot)
+        tweets_emot = scores_df.to_dict('records')
+        col_emotions.insert_many(tweets_emot)
+        batch = list()
