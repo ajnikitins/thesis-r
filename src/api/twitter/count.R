@@ -50,7 +50,7 @@ data_tweet_ukr_count_raw <- count_all_tweets(
 # Reformat raw twitter counts
 data_tweet_ukr_count <- data_tweet_ukr_count_raw %>%
   mutate(date = if (Sys.getenv('TWITTER_COUNT_GRANULARITY') == "day") floor_date(ymd_hms(start), unit = "days") else ymd_hms(start)) %>%
-  select(date, tweet_count) %>%
+  select(date, tweet_ukr_count = tweet_count) %>%
   arrange(date)
 
 saveRDS(data_tweet_ukr_count, glue("data/tweets/count/data_tweet_ukr_count_{Sys.getenv('TWITTER_COUNT_GRANULARITY')}.RDS"))
