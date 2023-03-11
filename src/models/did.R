@@ -130,11 +130,11 @@ data_events <- data_events_raw %>%
 # Aid
 data_events_aid_raw <- read_xlsx("data/events_aid.xlsx")
 data_events_aid <- data_events_aid_raw %>%
+  filter(events_mil == 1) %>%
   mutate(datetime = ymd_hms(datetime)) %>%
   mutate(date = date(datetime),
-         start_h = hour(datetime),
-         event_dum = if_else(!is.na(events_mil), 1, 0, missing = 0)) %>%
-  select(date, start_h, event_dum, type = currency, amount)
+         start_h = hour(datetime)) %>%
+  select(date, start_h, event_dum = events_mil, type = currency, amount)
 
 create_spec <- \(name, dep_var_form = "level", dep_var = c("don_count", "don_total_usd", "don_mean_usd"), indep_vars = c("is_treatment", "is_post", "is_post:is_treatment"), controls = NULL) {
   tibble(specification_name = name, expand_grid(dep_var_form, dep_var), indep_vars = list(c(indep_vars, controls)))
@@ -210,13 +210,10 @@ did_tables <- did_mods %>%
                              stars = c(0.01, 0.05, 0.1))))
 
 ltx_file <- paste(did_tables$table)
-# did_tables$table[[7]] %>% write("results/latex_did/main_ols.tex")
 write(ltx_file, "results/latex_did/supplement.tex")
 file.copy("src/latex/main_did.tex", "results/latex_did/main_did.tex", overwrite = TRUE)
 tools::texi2pdf("results/latex_did/main_did.tex", clean = TRUE)
 file.copy("main_did.pdf", "results/DiD_results.pdf", overwrite = TRUE)
-
-did_tables$table[[5]]
 
 # TODO: Re-check the DiD specification, the way standard errors are calculated, whether to use date or relative time fixed effects, whether to use "event" fixed effects
 # Current specification `different_many_nofixef` is a "basic" (no-fixed effect) DiD regression *with duplicate dates removed!!!!*
