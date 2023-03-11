@@ -58,7 +58,7 @@ raw_emotions_ml <- db_ml$aggregate(pipeline = pipeline_emotions_ml)
 
 saveRDS(raw_emotions_ml, "data/sentiment/data_emotions_ml_raw.RDS")
 
-raw_emotions_ml <- readRDS("data/sentiment/data_emotions_ml_raw.RDS")
+# raw_emotions_ml <- readRDS("data/sentiment/data_emotions_ml_raw.RDS")
 
 # Process daily emotions
 emotions_ml <- raw_emotions_ml %>%
@@ -75,6 +75,6 @@ emotions_ml <- raw_emotions_ml %>%
   mutate(across(starts_with("emot"), ~ . / sum(c_across(starts_with("emot"))), .names = "emot_prop_{str_remove(.col, 'emot_count_')}")) %>%
   ungroup()
 
- saveRDS(emotions_ml, "data/sentiment/data_emotions_ml.RDS")
+saveRDS(emotions_ml, "data/sentiment/data_emotions_ml.RDS")
 
-db$disconnect()
+db_ml$disconnect()
