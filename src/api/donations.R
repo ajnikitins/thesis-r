@@ -43,7 +43,7 @@ aggregate_donations <- \(main, grouping_vars, date_floor) {
       group_by(across(all_of(grouping_vars)), date) %>%
       summarise(across(c(don_count, don_total, don_total_usd), sum), don_mean = don_total / don_count, don_mean_usd = don_total_usd / don_count, .groups = "drop") %>%
       mutate(across(-c(date, all_of(grouping_vars)), ~ replace_na(., 0))) %>%
-      arrange(across(grouping_vars), date)
+      arrange(across(all_of(grouping_vars)), date)
 }
 
 aggregations_donations <- data.frame(
