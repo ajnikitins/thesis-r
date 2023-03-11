@@ -179,9 +179,9 @@ mod_tables <- mods %>%
 
 ltx_file <- paste(mod_tables$table)
 write(ltx_file, "results/latex_main/supplement.tex")
-file.copy("src/latex/main.tex", "results/latex_main/main.tex")
-tools::texi2pdf("results/latex_main/main.tex", clean = TRUE)
-file.copy("main.pdf", "results/OLS_results.pdf", overwrite = TRUE)
+file.copy("src/latex/main_ols.tex", "results/latex_main/main_ols.tex", overwrite = TRUE)
+tools::texi2pdf("results/latex_main/main_ols.tex", clean = TRUE)
+file.copy("main_ols.pdf", "results/OLS_results.pdf", overwrite = TRUE)
 
 ### Coefficient comparisons (F-tests)
 # Whether events are stronger for foreign
