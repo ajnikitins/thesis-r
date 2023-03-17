@@ -32,8 +32,22 @@ data_events <- data_events_raw %>%
          event_negative_dum = if_else(coloring == 1, 1, 0, missing = 0)) %>%
   select(date, event_positive_dum, event_negative_dum)
 
+# Aid
+data_events_aid_raw <- read_xlsx("data/events_aid.xlsx")
+data_events_aid <- data_events_aid_raw %>%
+  filter((events_mil == 1 & currency == "USD") | (events_EU_mix == 1)) %>%
+  mutate(datetime = ymd_hms(datetime)) %>%
+  mutate(date = date(datetime),
+         event_aid_dum = if_else(events_mil == 1 | events_EU_mix == 1, 1, 0)
+  ) %>%
+  group_by(date) %>%
+  arrange(desc(amount)) %>%
+  summarize(across(everything(), first)) %>%
+  select(date, event_aid_dum, aid_amount = amount)
+
 data_complete_full <- data_donations %>%
   left_join(data_events, by = "date") %>%
+  left_join(data_events_aid, by = "date") %>%
   left_join(data_sirens, by = "date") %>%
   left_join(data_strikes, by = "date") %>%
   left_join(data_tweet_count, by = "date") %>%
