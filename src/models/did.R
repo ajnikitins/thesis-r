@@ -220,16 +220,18 @@ file.copy("main_did.pdf", "results/DiD_results.pdf", overwrite = TRUE)
 # TODO: Re-check the DiD specification, the way standard errors are calculated, whether to use date or relative time fixed effects, whether to use "event" fixed effects
 # Current specification `different_many_nofixef` is a "basic" (no-fixed effect) DiD regression *with duplicate dates removed!!!!*
 
-### PLOT
-scaling <- 40
+### PLOTS
+## DiD plot
+scaling_count <- 10
+scaling_mean <- 4.3
 
 # Select last specification's data
-data_did <- did_mods$data[[4]] %>%
+data_did <- did_mods$data[[1]] %>%
   # Average over treatment/control groups
   group_by(is_treatment, rel_time) %>%
   summarise(across(c(don_count, don_total_usd, don_mean_usd), mean), .groups = "drop") %>%
-  mutate(don_count = if_else(is_treatment == 0, don_count * scaling, don_count)) %>%
-  mutate(don_mean_usd = if_else(is_treatment == 0, don_mean_usd / scaling, don_mean_usd)) %>%
+  mutate(don_count = if_else(is_treatment == 0, don_count * scaling_count, don_count)) %>%
+  mutate(don_mean_usd = if_else(is_treatment == 0, don_mean_usd / scaling_mean, don_mean_usd)) %>%
   pivot_longer(contains("don")) %>%
   group_by(is_treatment,
            is_post = if_else(rel_time < 0, 0, 1),
@@ -260,7 +262,7 @@ plot_1 <- data_did %>%
 
 
 plot_1 <- plot_1 + new_scale_color() +
-  scale_y_continuous(sec.axis = sec_axis(~ ./scaling, name = "Donation count (Foreign)")) +
+  scale_y_continuous(sec.axis = sec_axis(~ ./scaling_count, name = "Donation count (Foreign)")) +
   theme(axis.title.y.right = element_text(margin = margin(t = 0, r = 0, b = 0, l = 10),
                                           color = "#800000FF"),
         axis.line.y.right = element_line(color = "#800000FF"),
@@ -318,7 +320,7 @@ plot_3 <- data_did %>%
         axis.text.y = element_text(color = "#4747ba"))
 
 plot_3 <- plot_3 + new_scale_color() +
-  scale_y_continuous(sec.axis = sec_axis(~ .*scaling, name = "Donation mean USD value (Foreign)")) +
+  scale_y_continuous(sec.axis = sec_axis(~ .*scaling_mean, name = "Donation mean USD value (Foreign)")) +
   theme(axis.title.y.right = element_text(margin = margin(t = 0, r = 0, b = 0, l = 10),
                                           color ="#800000FF"),
         axis.line.y.right = element_line(color = "#800000FF"),
