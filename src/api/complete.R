@@ -60,9 +60,8 @@ data_complete_full <- data_donations %>%
   mutate(across(c(-date, -type), ~ replace_na(., 0))) %>%
   mutate(date = ymd(date)) %>%
   group_by(type) %>%
-  mutate(across(c(-date, -contains("dum")), ~log(.), .names = "log_{.col}"),
-         across(c(-date, -contains("dum"), -contains("log_")), ~. - dplyr::lag(.), .names = "d_{.col}"),
-         across(c(-date, -contains("dum"), -starts_with(c("d_", "log_"))), ~log(.) - log(dplyr::lag(.)), .names = "dlog_{.col}")) %>%
+  mutate(aid_amount = if_else(aid_amount == 0, 1, aid_amount),
+         across(c(-date, -contains("dum")), list(log = ~log(.), d = ~. - dplyr::lag(.), dlog = ~log(.) - log(dplyr::lag(.))), .names = "{.fn}_{.col}")) %>%
   # Generate weekday dummies
   mutate(weekday = factor(weekdays(date), levels = WEEKDAYS),
          days_since = (as.numeric(date - 19047)))
