@@ -130,11 +130,13 @@ data_events <- data_events_raw %>%
 # Aid
 data_events_aid_raw <- read_xlsx("data/events_aid.xlsx")
 data_events_aid <- data_events_aid_raw %>%
-  filter(events_mil == 1) %>%
+  filter((events_mil == 1 & currency == "USD") | (events_EU_mix == 1)) %>%
   mutate(datetime = ymd_hms(datetime)) %>%
   mutate(date = date(datetime),
-         start_h = hour(datetime)) %>%
-  select(date, start_h, event_dum = events_mil, type = currency, amount)
+         start_h = hour(datetime),
+         event_dum = if_else(events_mil == 1 | events_EU_mix == 1, 1, 0)
+  ) %>%
+  select(date, start_h, event_dum, type = currency, amount)
 
 create_spec <- \(name, dep_var_form = "level", dep_var = c("don_count", "don_total_usd", "don_mean_usd"), indep_vars = c("is_treatment", "is_post", "is_post:is_treatment"), controls = NULL) {
   tibble(specification_name = name, expand_grid(dep_var_form, dep_var), indep_vars = list(c(indep_vars, controls)))
@@ -196,7 +198,7 @@ did_tables <- did_mods %>%
   mutate(table_caption = switch(as.character(name),
                                 different_two = "DiD after war events: Comparison of different transformations for count of tweets (exposure).",
                                 aid_usd = "DiD after US military aid events: USD (treatment) vs. UAH (control) donations.",
-                                aid_eur = "DiD after EU military aid events: EUR (treatment) vs. UAH (control) donations.",
+                                aid_eur = "DiD after EU mixed (military, humanitarian, and financial) aid events: EUR (treatment) vs. UAH (control) donations.",
                                 NULL
   )) %>%
   mutate(table = list(texreg(set_names(mods, str_replace_all(dep_var, "_", "\\\\_")),
