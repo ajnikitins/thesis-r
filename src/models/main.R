@@ -5,22 +5,29 @@ library(texreg)
 library(lmtest)
 library(sandwich)
 
-WEEKDAYS <- c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
 EMOTIONS <- c('joy', 'anger', 'surprise', 'trust', 'fear', 'anticip', 'sadness', 'disgust')
+EMOTIONS_ml <- c('joy', 'anger', 'surprise', 'fear', 'sadness', 'disgust')
+
+emotion_coef_names <- map(EMOTIONS, \(emot) {
+  data.frame(
+    names = c("dlog_emot_count_{emot}_dict", "dlog_emot_count_{emot}_ml", "emot_prop_{emot}_dict", "emot_prop_{emot}_ml", "d_emot_prop_{emot}_ml", "emot_prop_{emot}_ml_quint_5"),
+    pretty_names = c("dlog_emot_count_{emot}_dict", "dlog_emot_count_{emot}_ml", "emot_prop_{emot}_dict", "emot_prop_{emot}_ml", "d_emot_prop_{emot}_ml", "emot_prop_{emot}_quint_5")
+  ) %>%
+    rowwise() %>%
+    mutate(names = glue_data(., names),
+           # pretty_names = glue_data(., pretty_names)) %>%
+           pretty_names = NA) %>%
+    pull(pretty_names, names)
+}) %>% unlist()
 
 # Load data
 data_raw <- readRDS("data/data_complete.RDS")
 
 # Process data for regressions
 data <- data_raw %>%
-  # Filter out beginning of war
-  filter(date >= "2022-03-16") %>%
   # Pivot out separate counts, total & mean values
-  pivot_wider(names_from = type, values_from = contains("don")) %>%
-  fastDummies::dummy_cols(c(glue("emot_prop_{EMOTIONS}_quint"), glue("dlog_emot_count_{EMOTIONS}_quint"))) %>%
-  # Generate weekday dummies
-  mutate(weekday = factor(weekdays(date), levels = WEEKDAYS),
-         days_since = (as.numeric(date - 19047)))
+  pivot_wider(names_from = type, values_from = contains("don"))
+  # fastDummies::dummy_cols(c(glue("emot_prop_{EMOTIONS_ml}_ml_quint"), glue("dlog_emot_count_{EMOTIONS_ml}_ml_quint")))
 
 # Get all variables
 vars <- names(data_raw)
@@ -38,32 +45,21 @@ mods_specifications <- list(
                                                                    "dlog_sev_cas_civ_count", "dlog_sev_cas_rus_mil_count", "dlog_sev_confl_evs_count")),
   list(name = "media", dep_var_form = c("dlog"), indep_vars = c("event_positive_dum", "event_negative_dum", "dlog_siren_count", "dlog_strike_air_count", "siren_prop",
                                                                 "dlog_sev_cas_civ_count", "dlog_sev_cas_rus_mil_count", "dlog_sev_confl_evs_count",
-                                                                "dlog_tweet_count", "dlog_factiva_count")),
+                                                                "dlog_tweet_count", "dlog_news_euro_count_des")),
   list(name = "media_int", dep_var_form = c("dlog"), indep_vars = c("event_positive_dum", "event_negative_dum", "dlog_siren_count", "dlog_strike_air_count", "siren_prop",
                                                                     "dlog_sev_cas_civ_count", "dlog_sev_cas_rus_mil_count", "dlog_sev_confl_evs_count",
-                                                                    "dlog_tweet_count", "dlog_factiva_count",
+                                                                    "dlog_tweet_count", "dlog_news_euro_count_des",
                                                                     "dlog_tweet_count:event_positive_dum", "dlog_tweet_count:event_negative_dum")),
-  list(name = "emotions", dep_var_form = c("dlog"), indep_vars = c("event_positive_dum", "event_negative_dum", "dlog_siren_count", "dlog_strike_air_count", "siren_prop",
+  list(name = "emotions_ml_count", dep_var_form = c("dlog"), indep_vars = c("event_positive_dum", "event_negative_dum", "dlog_siren_count", "dlog_strike_air_count", "siren_prop",
                                                                    "dlog_sev_cas_civ_count", "dlog_sev_cas_rus_mil_count", "dlog_sev_confl_evs_count",
-                                                                   "dlog_tweet_count", "dlog_factiva_count",
-                                                                   glue("emot_prop_{EMOTIONS}")))
-  # list(name = "emotions_quints", dep_var_form = c("dlog"), indep_vars = c("event_positive_dum", "event_negative_dum", "dlog_siren_count", "dlog_strike_air_count", "siren_prop", "dlog_tweet_count", "dlog_factiva_count",
-  #                                                                         glue("emot_prop_{EMOTIONS}_quint_4"),
-  #                                                                         glue("emot_prop_{EMOTIONS}_quint_5"),
-  #                                                                         "dlog_sev_cas_civ_count", "dlog_sev_cas_rus_mil_count", "dlog_sev_confl_evs_count")),
-  # list(name = "emotions_counts", dep_var_form = c("dlog"), indep_vars = c("event_positive_dum", "event_negative_dum", "dlog_siren_count", "dlog_strike_air_count", "siren_prop", "dlog_factiva_count",
-  #                                                                         glue("dlog_emot_count_{EMOTIONS}"),
-  #                                                                         "dlog_sev_cas_civ_count", "dlog_sev_cas_rus_mil_count", "dlog_sev_confl_evs_count")),
-  # list(name = "emotions_counts_quints", dep_var_form = c("dlog"), indep_vars = c("event_positive_dum", "event_negative_dum", "dlog_siren_count", "dlog_strike_air_count", "siren_prop", "dlog_factiva_count",
-  #                                                                                glue("dlog_emot_count_{EMOTIONS}_quint_4"),
-  #                                                                                glue("dlog_emot_count_{EMOTIONS}_quint_5"),
-  #                                                                                "dlog_sev_cas_civ_count", "dlog_sev_cas_rus_mil_count", "dlog_sev_confl_evs_count")),
-  # list(name = "emotions_d", dep_var_form = c("dlog"), indep_vars = c("event_positive_dum", "event_negative_dum", "dlog_siren_count", "dlog_strike_air_count", "siren_prop", "dlog_factiva_count",
-  #                                                                    glue("d_emot_count_{EMOTIONS}"),
-  #                                                                    "dlog_sev_cas_civ_count", "dlog_sev_cas_rus_mil_count", "dlog_sev_confl_evs_count")),
-  # list(name = "emotions_log", dep_var_form = c("dlog"), indep_vars = c("event_positive_dum", "event_negative_dum", "dlog_siren_count", "dlog_strike_air_count", "siren_prop", "dlog_factiva_count",
-  #                                                                    glue("log_emot_count_{EMOTIONS}"),
-  #                                                                    "dlog_sev_cas_civ_count", "dlog_sev_cas_rus_mil_count", "dlog_sev_confl_evs_count"))
+                                                                   # "dlog_tweet_count",
+                                                                   "dlog_news_euro_count_des",
+                                                                   glue("dlog_emot_count_{EMOTIONS_ml}_ml"))),
+  list(name = "emotions_ml_count_no_fear", dep_var_form = c("dlog"), indep_vars = c("event_positive_dum", "event_negative_dum", "dlog_siren_count", "dlog_strike_air_count", "siren_prop",
+                                                                   "dlog_sev_cas_civ_count", "dlog_sev_cas_rus_mil_count", "dlog_sev_confl_evs_count",
+                                                                   # "dlog_tweet_count",
+                                                                   "dlog_news_euro_count_des",
+                                                                   glue("dlog_emot_count_{EMOTIONS_ml[-4]}_ml")))
 ) %>%
   reduce(\(acc, x) {
     frame <- data.frame(specification_name = x$name, dep_var_form = x$dep_var_form) %>%
@@ -100,18 +96,6 @@ mods <- mods_template %>%
          mod_robust_p = list(split(mod_robust[, 4], cut(seq_along(mod_robust[, 4]), 3, labels = FALSE)))
   )
 
-emotion_coef_names <- map(EMOTIONS, \(emot) {
-  data.frame(
-    names = c("emot_prop_{emot}", "emot_prop_{emot}_quint_4", "emot_prop_{emot}_quint_5", "dlog_emot_count_{emot}", "dlog_emot_count_{emot}_quint_4", "dlog_emot_count_{emot}_quint_5", "d_emot_count_{emot}", "log_emot_count_{emot}"),
-    pretty_names = c("{str_to_title(emot)} (prop)", "{str_to_title(emot)} (prop) Q4", "{str_to_title(emot)} (prop) Q5", "{str_to_title(emot)} (count)", "{str_to_title(emot)} (count) Q4", "{str_to_title(emot)} (count) Q5", "{str_to_title(emot)} (diff)", "{str_to_title(emot)} (log)")
-  ) %>%
-    rowwise() %>%
-    mutate(names = glue_data(., names),
-           # pretty_names = glue_data(., pretty_names)) %>%
-           pretty_names = NA) %>%
-    pull(pretty_names, names)
-}) %>% unlist()
-
 # Generate texreg tables from models
 mod_tables <- mods %>%
   # Combine models into groups for the same specifications and functional forms (i.e., tables will be with all three dependent variables)
@@ -125,44 +109,34 @@ mod_tables <- mods %>%
                                     severity = list("Event types" = 2:3, "Air raid sirens" = 4:6, "War severity" = 7:9),
                                     media = list("Event types" = 2:3, "Air raid sirens" = 4:6, "War severity" = 7:9, "Media" = 10:11),
                                     media_int = list("Event types" = 2:3, "Air raid sirens" = 4:6, "War severity" = 7:9, "Media" = 10:13),
-                                    emotions = list("Event types" = 2:3, "Air raid sirens" = 4:6, "War severity" = 7:9, "Media" = 10:11, "Emotion type" = 12:19),
+                                    emotions_ml_count = list("Event types" = 2:3, "Air raid sirens" = 4:6, "War severity" = 7:9, "Media" = 10, "Emotion type" = 11:16),
                                     NULL
   )),
          table_scalebox = list(switch(as.character(specification_name),
-                                      emotions = 0.65,
                                       0.7
          )),
          table_sideways = list(switch(as.character(specification_name),
-                                      emotions = FALSE,
                                       FALSE
          )),
-         table_variable_map = list(c("(Intercept)" = "Intercept", "event_positive_dum" = NA, "event_negative_dum" = NA,
-                                     "dlog_siren_count" = NA, "siren_count" = NA, "dlog_siren_mean_duration" = NA, "siren_mean_duration" = NA, "dlog_strike_air_count" = NA, "dlog_siren_prop" = NA, "siren_prop" = NA, "siren_kyiv_dum" = NA,
+         table_variable_map = list(c("(Intercept)" = "Intercept", "event_positive_dum" = NA, "event_negative_dum" = NA, "event_aid_dum" = NA, "event_aid_dum:log_aid_amount" = NA,
+                                     "dlog_siren_count" = NA, "siren_count" = NA, "dlog_siren_mean_duration" = NA, "siren_mean_duration" = NA, "dlog_strike_air_count" = NA, "dlog_strike_air_arty_count" = NA, "dlog_siren_prop" = NA, "siren_prop" = NA, "siren_kyiv_dum" = NA,
                                      "dlog_sev_cas_civ_count" = NA, "dlog_sev_cas_rus_mil_count" = NA, "dlog_sev_confl_evs_count" = NA,
-                                     "dlog_tweet_count" = NA, "dlog_factiva_count" = NA,
+                                     "dlog_tweet_count" = NA, "dlog_factiva_count" = NA, "dlog_news_euro_count_des" = NA,
                                      "event_positive_dum:dlog_tweet_count" = NA, "event_negative_dum:dlog_tweet_count" = NA,
                                      emotion_coef_names
                                      # "weekdayMonday" = NA, "weekdayTuesday" = NA, "weekdayWednesday" = NA, "weekdayThursday" = NA, "weekdayFriday" = NA, "weekdaySaturday" = NA, "weekdaySunday" = NA,
                                      # "days_since" = NA
          )),
-         # table_variable_map = list(c("(Intercept)" = "Intercept", "event_positive_dum" = "Positive event", "event_negative_dum" = "Negative event",
-         #                             "dlog_siren_count" = "Sirens", "siren_count" = "Sirens", "dlog_siren_mean_duration" = "Mean siren duration", "siren_mean_duration" = "Mean siren duration",  "dlog_strike_air_count" = "Air strikes", "dlog_siren_prop" = "Share of Ukraine", "siren_prop" = "Share of Ukraine","siren_kyiv_dum" = "Sirens in Kyiv",
-         #                             "dlog_tweet_count" = "Tweets", "dlog_factiva_count" = "News articles",
-         #                             emotion_coef_names,
-         #                             "dlog_sev_cas_civ_count" = "Civilian casualties", "dlog_sev_cas_rus_mil_count" = "Russian mil. casualties", "dlog_sev_confl_evs_count" = "Conflict events"
-         #                             # "weekdayMonday" = "Monday", "weekdayTuesday" = "Tuesday", "weekdayWednesday" = "Wednesday", "weekdayThursday" = "Thursday", "weekdayFriday" = "Friday", "weekdaySaturday" = "Saturday", "weekdaySunday" = "Sunday",
-         #                             # "days_since" = "Days since"
-         # )),
          table_caption = list(switch(as.character(specification_name),
                                      events = "Donation characteristics and high emotional intensity days.",
                                      sirens = "Donation characteristics and proxies for emotional intensity.",
                                      severity = "Donation characteristics and proxies for emotional intensity.",
                                      media = "Donation characteristics and proxies for emotional intensity and exposure.",
                                      media_int = "Donation characteristics and proxies for emotional intensity and exposure.",
-                                     emotions = "Donation characteristics and proxies for emotional intensity, exposure and type of emotion."
+                                     emotions_ml_count = "Donation characteristics and proxies for emotional intensity, exposure and type of emotion (count of tweets).",
+                                     NULL
          )),
          table_label = glue("table:{dep_var_form}_{specification_name}"),
-         # table_header_dep_vars = list(map(dep_vars, \(dep_var) switch(dep_var, don_count = "Count", don_total_usd = "Total value (USD)", don_mean_usd = "Mean value (USD)"))),
          table_header_dep_vars = list(map(dep_vars, \(dep_var) switch(dep_var, don_count = "don_count", don_total_usd = "don_total_usd", don_mean_usd = "don_mean_usd"))),
          table_header = list(set_names(list(1:3, 4:6, 7:9), str_replace_all(glue("{table_header_dep_vars}"), "_", "\\\\_")))) %>%
   mutate(table = list(texreg(mod, override.se = unlist(mod_robust_se, recursive = FALSE), override.pvalues = unlist(mod_robust_p, recursive = FALSE), beside = TRUE,
