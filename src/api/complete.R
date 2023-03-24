@@ -30,6 +30,7 @@ data_events <- data_events_raw %>%
          date = date(datetime)) %>%
   mutate(event_positive_dum = if_else(coloring == 0, 1, 0, missing = 0),
          event_negative_dum = if_else(coloring == 1, 1, 0, missing = 0)) %>%
+  filter(is_aid == 0) %>%
   select(date, event_positive_dum, event_negative_dum)
 
 # Aid
