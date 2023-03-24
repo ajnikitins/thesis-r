@@ -157,6 +157,7 @@ file.copy("src/latex/main_ols.tex", "results/latex_main/main_ols.tex", overwrite
 tools::texi2pdf("results/latex_main/main_ols.tex", clean = TRUE)
 file.copy("main_ols.pdf", "results/OLS_results.pdf", overwrite = TRUE)
 
+#### Extras
 ### Coefficient comparisons (F-tests)
 # Whether events are stronger for foreign
 test_events <- tibble(
@@ -185,36 +186,61 @@ test_events_table <- test_events %>%
     )
   })
 
-write(test_events_table, "results/latex_main/event-tests.tex")
+write(test_events_table, "results/latex_extras/event-tests.tex")
 
-# Summary of results (sign and significance)
-mods_sum <- mods %>%
+### Split Strikes & Sirens
+extra_split_strikes_cutoff <- "31/10/2022"
+
+extra_split_strikes_eqs <- map(c("dlog_don_count", "dlog_don_total_usd", "dlog_don_mean_usd"), \(dep_var) {
+  interaction(dep_var, c("Ukrainian", "Foreign", "Crypto"), sep = "_") %>%
+    interaction(., "event_positive_dum + event_negative_dum + dlog_siren_count + dlog_strike_air_count + siren_prop + weekday + days_since", sep = " ~ ") %>%
+    map(as.character) %>%
+    map(as.formula) %>%
+    set_names(c("Ukrainian", "Foreign", "Crypto"))
+})
+
+extra_split_strikes_mods_specifications <- expand_grid(
+  eq = extra_split_strikes_eqs,
+  tibble(specification_name = c("splits_strikes_pre", "splits_strikes_post"), data = list(filter(data, date <= dmy(extra_split_strikes_cutoff)), filter(data, date > dmy(extra_split_strikes_cutoff)))))
+
+extra_split_strikes_mods <- extra_split_strikes_mods_specifications %>%
   rowwise() %>%
-  mutate(extracted = list(extract(mod, beside = TRUE, include.rsquared = FALSE, include.adjrs = FALSE, include.nobs = FALSE)),
-         summarised = list(map(extracted, \(model) {
-           list(name = model@model.name, variable = model@coef.names, coef = model@coef, pvalues = model@pvalues) %>%
-             data.frame(row.names = NULL) %>%
-             mutate(variable = str_remove_all(variable, "^(log|d|dlog)_"),
-                    stars = case_when(pvalues < 0.001 ~ "***", pvalues < 0.01 ~ "**", pvalues < 0.05 ~ "*", pvalues < 0.1 ~ ".", TRUE ~ ""),
-                    sign = case_when(coef > 0 ~ "+", coef < 0 ~ "-"), .keep = "unused") %>%
-             mutate(coef = paste0("'", sign, stars), .keep = "unused")
-         })),
-         summarised = list(bind_rows(summarised)),
-         # summarised = list(pivot_wider(summarised, names_from = name, values_from = coef))
-  ) %>%
-  select(dep_var, dep_var_form, specification_name, summarised) %>%
-  unnest_wider(summarised) %>%
-  unnest_longer(col = c(variable, name, coef)) %>%
-  unite(dep_var, dep_var_form, dep_var) %>%
-  pivot_wider(names_from = name, values_from = coef) %>%
-  filter(variable != "(Intercept)" &
-           variable != "days_since" &
-           variable != "I(days_since^2)" &
-           !str_detect(variable, "weekday"))
+  mutate(mod = list(systemfit(eq, method = "SUR", data = data, maxiter = 500)),
+         mod_robust = list(coeftest(mod, vcov = vcovHAC(mod))),
+         mod_robust_se = list(split(mod_robust[, 2], cut(seq_along(mod_robust[, 2]), 3, labels = FALSE))),
+         mod_robust_p = list(split(mod_robust[, 4], cut(seq_along(mod_robust[, 4]), 3, labels = FALSE)))
+  )
 
-file.remove("data/models/summary.xlsx")
-mods_sum %>%
-  group_by(dep_var) %>%
-  group_walk(\(data, key) {
-    xlsx::write.xlsx(data, "results/summary.xlsx", sheetName = key$dep_var, append = TRUE)
-  })
+extra_split_strikes_mod_tables <- extra_split_strikes_mods %>%
+  group_by(specification_name) %>%
+  # Define table parameters for the three specifications, and transform them into LaTeX
+  summarise(
+    mods = list(mod),
+    table_variable_map = list(c("(Intercept)" = "Intercept", "event_positive_dum" = NA, "event_negative_dum" = NA,
+                                     "dlog_siren_count" = NA, "siren_count" = NA, "dlog_siren_mean_duration" = NA, "siren_mean_duration" = NA, "dlog_strike_air_count" = NA, "dlog_strike_air_arty_count" = NA, "dlog_siren_prop" = NA, "siren_prop" = NA, "siren_kyiv_dum" = NA
+                                     # "weekdayMonday" = NA, "weekdayTuesday" = NA, "weekdayWednesday" = NA, "weekdayThursday" = NA, "weekdayFriday" = NA, "weekdaySaturday" = NA, "weekdaySunday" = NA,
+                                     # "days_since" = NA
+            )),
+    table_caption = list(switch(as.character(specification_name[[1]]),
+                                splits_strikes_pre = glue("Donation characteristics and proxies for emotional intensity (data before {extra_split_strikes_cutoff})."),
+                                splits_strikes_post = glue("Donation characteristics and proxies for emotional intensity (data after {extra_split_strikes_cutoff})."),
+                                NULL
+    )),
+    table_label = glue("table:dlog_{specification_name[[1]]}"),
+    table_header_dep_vars = list(map(dep_vars, \(dep_var) switch(dep_var, don_count = "don_count", don_total_usd = "don_total_usd", don_mean_usd = "don_mean_usd"))),
+    table_header = list(set_names(list(1:3, 4:6, 7:9), str_replace_all(glue("{unlist(table_header_dep_vars)}"), "_", "\\\\_"))),
+    .groups = "keep") %>%
+  summarise(table = list(texreg(unlist(mods, recursive = FALSE), beside = TRUE,
+                             include.nobs = FALSE,
+                             dcolumn = TRUE, booktabs = TRUE, sideways = FALSE, threeparttable = TRUE,
+                             custom.coef.map = as.list(unlist(table_variable_map, recursive = FALSE)),
+                             stars = c(0.01, 0.05, 0.10),
+                             custom.header = unlist(table_header, recursive = FALSE),
+                             groups = list("Event types" = 2:3, "Air raid sirens" = 4:6),
+                             scalebox = 0.7,
+                             caption.above = TRUE,
+                             caption = table_caption, label = table_label,
+                             use.packages = FALSE)))
+
+extra_split_strikes_ltx_file <- paste(extra_split_strikes_mod_tables$table)
+write(extra_split_strikes_ltx_file, "results/latex_extras/split-strikes.tex")
