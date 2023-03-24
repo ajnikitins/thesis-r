@@ -73,21 +73,22 @@ generate_hours <- \(day, start_h, pre_offset_h, post_offset_h, ignore_night = FA
   dates <- bind_rows(pre, post) %>%
     mutate(across(c(is_pre, is_post), ~ replace_na(., 0)),
            is_pre = if_else(rel_time == -1, 0, is_pre),
-           group = glue("{year(day)}{month(day)}{day(day)}-{start_h}"))
+           group = glue("{year(day)}-{month(day)}-{day(day)}--{start_h}"))
 }
 
 generate_models <- \(data, specifications, estimate_fixef = FALSE, fixef = "type_sub") {
+  mods <- specifications %>%
+    rowwise() %>%
+    mutate(dep_var = if (dep_var_form == "level") as.factor(dep_var) else paste0(dep_var_form, "_", dep_var),
+           indep_vars = ifelse(include_lag, list(c(glue("lag({dep_var})"), indep_vars)), list(indep_vars)))
+
   mods <- if (estimate_fixef) {
-    specifications %>%
-      rowwise() %>%
-      mutate(dep_var = if (dep_var_form == "level") dep_var else paste0(dep_var_form, "_", dep_var),
-             eq = list(formula(paste(dep_var, "~", paste(indep_vars, collapse = "+"), glue("| {fixef} + rel_time")))),
+    mods %>%
+      mutate(eq = list(formula(paste(dep_var, "~", paste(indep_vars, collapse = "+"), glue("| {fixef} + rel_time")))),
              mod = list(feols(eq, data = data, panel.id = ~type_sub + rel_time, vcov = "DK")))
   } else {
-    specifications %>%
-      rowwise() %>%
-      mutate(dep_var = if (dep_var_form == "level") dep_var else paste0(dep_var_form, "_", dep_var),
-             eq = list(formula(paste(dep_var, "~", paste(indep_vars, collapse = "+")))),
+    mods %>%
+      mutate(eq = list(formula(paste(dep_var, "~", paste(indep_vars, collapse = "+")))),
              mod = list(lm(eq, data = data)),
              mod = list(coeftest(mod, vcov = vcovHAC(mod))))
   }
@@ -123,6 +124,7 @@ data_intraday_sub <- readRDS("data/data_intraday_sub.RDS")
 data_events_raw <- read_excel("data/important_events_hourly.xlsx")
 data_events <- data_events_raw %>%
   mutate(datetime = with_tz(ymd_hms(datetime, tz = "Europe/Kiev"), tzone = "UTC")) %>%
+  filter(is_aid == 0) %>%
   transmute(date = date(datetime),
             start_h = hour(datetime),
             event_dum = if_else(!is.na(coloring), 1, 0, missing = 0))
@@ -138,45 +140,22 @@ data_events_aid <- data_events_aid_raw %>%
   ) %>%
   select(date, start_h, event_dum, type = currency, amount)
 
-create_spec <- \(name, dep_var_form = "level", dep_var = c("don_count", "don_total_usd", "don_mean_usd"), indep_vars = c("is_treatment", "is_post", "is_post:is_treatment"), controls = NULL) {
-  tibble(specification_name = name, expand_grid(dep_var_form, dep_var), indep_vars = list(c(indep_vars, controls)))
+create_spec <- \(name, dep_var_form = "level", dep_var = c("don_count", "don_total_usd", "don_mean_usd"), include_lag = FALSE, indep_vars = c("is_treatment", "is_post", "is_post:is_treatment"), controls = NULL) {
+  tibble(specification_name = name, expand_grid(dep_var_form, dep_var), include_lag = include_lag, indep_vars = list(c(indep_vars, controls)))
 }
 
 did_specs <- list(
-  # tibble(name = "single_two", own_start_h = 12, omit_crypto = TRUE, distinct_dates = TRUE, specifications = list(bind_rows(
-  #   create_spec("normal", dep_var_form = c("level", "log1")),
-  #   create_spec("pre", dep_var_form = c("level", "log1"), indep_vars = c("is_treatment", "is_pre", "is_post", "is_pre:is_treatment", "is_post:is_treatment")),
-  # ))),
   tibble(name = "different_two", ignore_night = TRUE, omit_crypto = TRUE, distinct_dates = TRUE, specifications = list(bind_rows(
     create_spec("normal", dep_var_form = c("level")),
-    # create_spec("pre", dep_var_form = c("level", "log1"), indep_vars = c("is_treatment", "is_pre", "is_post", "is_pre:is_treatment", "is_post:is_treatment")),
-    create_spec("normal", dep_var_form = c("level"), controls = "tweet_count"),
     create_spec("normal", dep_var_form = c("level"), controls = "log1_tweet_count"),
-    create_spec("normal", dep_var_form = c("level"), controls = "dlog1_tweet_count"),
   ))),
-  # tibble(name = "different_many", data = data_intraday_sub, ignore_night = TRUE, omit_crypto = FALSE, distinct_dates = TRUE, estimate_fixef = TRUE, specifications = list(bind_rows(
-  #   create_spec("normal", dep_var_form = c("level", "log1"), indep_vars = "is_treated"),
-  # ))),
-  # tibble(name = "different_many_nofixef", data = data_intraday_sub, ignore_night = TRUE, omit_crypto = TRUE, distinct_dates = TRUE, estimate_fixef = FALSE, specifications = list(bind_rows(
-  #   create_spec("normal", dep_var_form = c("level", "log1")),
-  #   # create_spec("normal", dep_var_form = c("level", "log1"), controls = "asinh_tweet_count"),
-  # ))),
-  # tibble(name = "different_many", data = data_intraday_sub, ignore_night = TRUE, omit_crypto = FALSE, distinct_dates = FALSE, estimate_fixef = TRUE, specifications = list(bind_rows(
-  #   tibble(specification_name = "dupes", expand_grid(dep_var_form = c("level", "log1"), dep_var = c("don_count", "don_total_usd", "don_mean_usd")), indep_vars = list(c("is_treated")))
-  # ))),
   tibble(name = "aid_usd", events = list(filter(data_events_aid, type == "USD")), own_start_h = TRUE, data = list(filter(data_intraday_sub, str_detect(type_sub, "USD|UAH"))), treatment_type = "Foreign", ignore_night = TRUE, specifications = list(bind_rows(
     create_spec("normal", dep_var_form = c("level")),
-    # create_spec("pre", dep_var_form = c("level", "log1"), indep_vars = c("is_treatment", "is_pre", "is_post", "is_pre:is_treatment", "is_post:is_treatment")),
-    create_spec("normal", dep_var_form = c("level"), controls = "tweet_count"),
-    create_spec("normal", dep_var_form = c("level"), controls = "log1_tweet_count"),
-    create_spec("normal", dep_var_form = c("level"), controls = "dlog1_tweet_count"),
+    create_spec("normal", dep_var_form = c("level"), controls = "log1_tweet_count")
   ))),
   tibble(name = "aid_eur", events = list(filter(data_events_aid, type == "EUR")), own_start_h = TRUE, data = list(filter(data_intraday_sub, str_detect(type_sub, "EUR|UAH"))), treatment_type = "Foreign", ignore_night = TRUE, specifications = list(bind_rows(
     create_spec("normal", dep_var_form = c("level")),
-    # create_spec("pre", dep_var_form = c("level", "log1"), indep_vars = c("is_treatment", "is_pre", "is_post", "is_pre:is_treatment", "is_post:is_treatment")),
-    create_spec("normal", dep_var_form = c("level"), controls = "tweet_count"),
     create_spec("normal", dep_var_form = c("level"), controls = "log1_tweet_count"),
-    create_spec("normal", dep_var_form = c("level"), controls = "dlog1_tweet_count"),
   )))
 ) %>%
   bind_rows(tibble(name = character(), events = list(), own_start_h = numeric(), data = list(), treatment_type = character(), pre_offset_h = numeric(), post_offset_h = numeric(), ignore_night = logical(), omit_crypto = logical(), distinct_dates = logical(), estimate_fixef = logical(), specifications = list()), .) %>%
