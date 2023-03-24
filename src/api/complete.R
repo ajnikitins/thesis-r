@@ -70,7 +70,7 @@ saveRDS(data_complete_full, "data/data_complete_full.RDS")
 
 data_complete <- data_complete_full %>%
   filter(date >= ymd("2022-03-16")) %>%
-  mutate(across(c(dlog_news_factiva_count, dlog_news_euro_count), ~ deseasonalise_variable(., weekday), .names = "{.col}_des")) %>%
+  mutate(across(c(dlog_news_euro_count), ~ deseasonalise_variable(., weekday), .names = "{.col}_des")) %>%
   # mutate(across(c(-date, -contains("dum")), ~findInterval(.x, quantile(.x, seq(0, 1, 0.2)), rightmost.closed = TRUE), .names = "{col}_quint")) %>%
   ungroup()
 
