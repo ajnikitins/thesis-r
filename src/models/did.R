@@ -136,7 +136,7 @@ data_events_aid <- data_events_aid_raw %>%
   mutate(datetime = ymd_hms(datetime)) %>%
   mutate(date = date(datetime),
          start_h = hour(datetime),
-         event_dum = if_else(events_mil == 1 | events_EU_mix == 1, 1, 0)
+         event_dum = if_else((events_mil == 1 & currency == "USD") | events_EU_mix == 1, 1, 0)
   ) %>%
   select(date, start_h, event_dum, type = currency, amount)
 
@@ -149,11 +149,11 @@ did_specs <- list(
     create_spec("normal", dep_var_form = c("level")),
     create_spec("normal", dep_var_form = c("level"), controls = "log1_tweet_count"),
   ))),
-  tibble(name = "aid_usd", events = list(filter(data_events_aid, type == "USD")), own_start_h = TRUE, data = list(filter(data_intraday_sub, str_detect(type_sub, "USD|UAH"))), treatment_type = "Foreign", ignore_night = TRUE, specifications = list(bind_rows(
+  tibble(name = "aid_usd", events = list(filter(data_events_aid, type == "USD")), data = list(filter(data_intraday_sub, str_detect(type_sub, "USD|UAH"))), treatment_type = "Foreign", ignore_night = TRUE, specifications = list(bind_rows(
     create_spec("normal", dep_var_form = c("level")),
     create_spec("normal", dep_var_form = c("level"), controls = "log1_tweet_count")
   ))),
-  tibble(name = "aid_eur", events = list(filter(data_events_aid, type == "EUR")), own_start_h = TRUE, data = list(filter(data_intraday_sub, str_detect(type_sub, "EUR|UAH"))), treatment_type = "Foreign", ignore_night = TRUE, specifications = list(bind_rows(
+  tibble(name = "aid_eur", events = list(filter(data_events_aid, type == "EUR")), data = list(filter(data_intraday_sub, str_detect(type_sub, "EUR|UAH"))), treatment_type = "Foreign", ignore_night = TRUE, specifications = list(bind_rows(
     create_spec("normal", dep_var_form = c("level")),
     create_spec("normal", dep_var_form = c("level"), controls = "log1_tweet_count"),
   )))
@@ -179,6 +179,12 @@ did_tables <- did_mods %>%
                                 aid_usd = "DiD after US military aid events: USD (treatment) vs. UAH (control) donations.",
                                 aid_eur = "DiD after EU mixed (military, humanitarian, and financial) aid events: EUR (treatment) vs. UAH (control) donations.",
                                 NULL
+  ),
+         table_variable_map = switch(as.character(name),
+                                     different_two = list(c(is_treatment = "Ukrainian", is_post = "After", "is_treatment:is_post" = "Ukrainian $\\times$ After", log1_tweet_count = "TweetCount")),
+                                     aid_usd = list(c(is_treatment = "USD", is_post = "After", "is_treatment:is_post" = "USD $\\times$ After", log1_tweet_count = "TweetCount")),
+                                     aid_eur = list(c(is_treatment = "EUR", is_post = "After", "is_treatment:is_post" = "EUR $\\times$ After", log1_tweet_count = "TweetCount")),
+                                     NULL
   )) %>%
   mutate(table = list(texreg(set_names(mods, str_replace_all(dep_var, "_", "\\\\_")),
                              use.packages = FALSE,
@@ -186,6 +192,7 @@ did_tables <- did_mods %>%
                              booktabs = TRUE,
                              dcolumn = TRUE,
                              scalebox = 0.8,
+                             custom.coef.map = as.list(table_variable_map),
                              caption.above = TRUE,
                              caption = table_caption,
                              stars = c(0.01, 0.05, 0.1))))
