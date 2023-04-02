@@ -210,9 +210,6 @@ file.copy("src/latex/main_did.tex", "results/latex_did/main_did.tex", overwrite 
 tools::texi2pdf("results/latex_did/main_did.tex", clean = TRUE)
 file.copy("main_did.pdf", "results/DiD_results.pdf", overwrite = TRUE)
 
-# TODO: Re-check the DiD specification, the way standard errors are calculated, whether to use date or relative time fixed effects, whether to use "event" fixed effects
-# Current specification `different_many_nofixef` is a "basic" (no-fixed effect) DiD regression *with duplicate dates removed!!!!*
-
 ### PLOTS
 ## DiD plot
 scaling_count <- 10
