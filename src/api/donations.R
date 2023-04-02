@@ -27,7 +27,8 @@ data_donations_hourly_sub <- bind_rows(data_cba, data_crypto) %>%
   filter(date %within% interval("2022-01-01 00:00:00", "2023-02-28 23:59:59")) %>%
   # Trim bottom and top 1% of donations
   group_by(type, type_sub) %>%
-  filter(dplyr::between(value_usd, quantile(value_usd, 0.01), quantile(value_usd, 0.99))) %>%
+  # filter(dplyr::between(value_usd, quantile(value_usd, 0.01), quantile(value_usd, 0.99))) %>%
+  filter(dplyr::between(value_usd, 0, quantile(value_usd, 0.99))) %>%
   # Calculate daily counts and means
   group_by(type, type_sub, date) %>%
   summarise(don_count = n(), don_total = sum(value), don_total_usd = sum(value_usd), don_mean = don_total / don_count, don_mean_usd = don_total_usd / don_count, .groups = "drop") %>%
