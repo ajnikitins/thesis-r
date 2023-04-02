@@ -22,8 +22,9 @@ deseasonalise <- \(.data, var_y) {
 }
 
 data_res <- data %>%
+  select(date, type, starts_with("don")) %>%
   group_by(type) %>%
-  mutate(across(c(-date, -ends_with("dum"), -ends_with("quint")), ~ deseasonalise(cur_data(), cur_column()))) %>%
+  mutate(across(c(-date, -ends_with("dum"), -ends_with("quint"), -ends_with("des")), ~ deseasonalise(cur_data(), cur_column()))) %>%
   ungroup()
 
 saveRDS(data_res, "data/data_deseasoned.RDS")
