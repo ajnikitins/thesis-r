@@ -89,8 +89,7 @@ generate_models <- \(data, specifications, estimate_fixef = FALSE, fixef = "type
   } else {
     mods %>%
       mutate(eq = list(formula(paste(dep_var, "~", paste(indep_vars, collapse = "+")))),
-             mod = list(lm(eq, data = data)),
-             mod = list(coeftest(mod, vcov = vcovHAC(mod))))
+             mod = list(lm(eq, data = data)))
   }
 
   pull(mods, mod)
@@ -140,7 +139,7 @@ data_events_aid <- data_events_aid_raw %>%
   ) %>%
   select(date, start_h, event_dum, type = currency, amount)
 
-create_spec <- \(name, dep_var_form = "level", dep_var = c("don_count", "don_total_usd", "don_mean_usd"), include_lag = FALSE, indep_vars = c("is_treatment", "is_post", "is_post:is_treatment"), controls = NULL) {
+create_spec <- \(name, dep_var_form = "level", dep_var = c("don_count", "don_total_usd"), include_lag = FALSE, indep_vars = c("is_treatment", "is_post", "is_post:is_treatment"), controls = NULL) {
   tibble(specification_name = name, expand_grid(dep_var_form, dep_var), include_lag = include_lag, indep_vars = list(c(indep_vars, controls)))
 }
 
@@ -165,15 +164,18 @@ did_specs <- list(
 
 did_mods <- did_specs %>%
   mutate(data = list(generate_data(events, own_start_h, data, treatment_type, pre_offset_h, post_offset_h, ignore_night, omit_crypto, distinct_dates))) %>%
-  mutate(mods = list(generate_models(data, specifications, estimate_fixef, aggregation)))
+  mutate(mod = list(generate_models(data, specifications, estimate_fixef, aggregation)),
+         mod_robust = list(map(mod, ~ coeftest(.x, vcov = vcovHAC(.x)))))
 
 did_tables <- did_mods %>%
-  select(name, specifications, mods) %>%
-  unnest(c(specifications, mods)) %>%
+  select(name, specifications, mod, mod_robust) %>%
+  unnest(c(specifications, mod, mod_robust)) %>%
   arrange(name, dep_var, specification_name) %>%
   group_by(name, dep_var_form) %>%
   summarise(across(everything(), list)) %>%
   rowwise() %>%
+  mutate(mod_robust_se = list(map(mod_robust, ~.[, 2])),
+         mod_robust_p = list(map(mod_robust, ~.[, 4]))) %>%
   mutate(table_caption = switch(as.character(name),
                                 different_two = "DiD after war events: Comparison of different transformations for count of tweets (exposure).",
                                 aid_usd = "DiD after US military aid events: USD (treatment) vs. UAH (control) donations.",
@@ -181,12 +183,17 @@ did_tables <- did_mods %>%
                                 NULL
   ),
          table_variable_map = switch(as.character(name),
-                                     different_two = list(c(is_treatment = "Ukrainian", is_post = "After", "is_treatment:is_post" = "Ukrainian $\\times$ After", log1_tweet_count = "TweetCount")),
-                                     aid_usd = list(c(is_treatment = "USD", is_post = "After", "is_treatment:is_post" = "USD $\\times$ After", log1_tweet_count = "TweetCount")),
-                                     aid_eur = list(c(is_treatment = "EUR", is_post = "After", "is_treatment:is_post" = "EUR $\\times$ After", log1_tweet_count = "TweetCount")),
+                                     different_two = list(c(is_treatment = "$Ukrainian$", is_post = "$After$", "is_treatment:is_post" = "$Ukrainian \\times After$", log1_tweet_count = "$TweetCount$")),
+                                     aid_usd = list(c(is_treatment = "$USD$", is_post = "$After$", "is_treatment:is_post" = "$USD \\times After$", log1_tweet_count = "$TweetCount$")),
+                                     aid_eur = list(c(is_treatment = "$EUR$", is_post = "$After$", "is_treatment:is_post" = "$EUR \\times After$", log1_tweet_count = "$TweetCount$")),
                                      NULL
-  )) %>%
-  mutate(table = list(texreg(set_names(mods, str_replace_all(dep_var, "_", "\\\\_")),
+  ),
+         table_model_names = list(c(don_count = "$DonCount$", don_total_usd = "$DonTotalUSD$", don_mean_usd = "$DonMeanUSD$")[dep_var])
+  ) %>%
+  mutate(table = list(texreg(set_names(mod, str_replace_all(table_model_names, "_", "\\\\_")),
+                             override.se = mod_robust_se,
+                             override.pvalues = mod_robust_p,
+                             include.nobs = FALSE,
                              use.packages = FALSE,
                              threeparttable = FALSE,
                              booktabs = TRUE,
@@ -209,15 +216,18 @@ file.copy("main_did.pdf", "results/DiD_results.pdf", overwrite = TRUE)
 ### PLOTS
 ## DiD plot
 scaling_count <- 10
-scaling_mean <- 4.3
+scaling_total <- 1.6
+# scaling_mean <- 4.3
 
 # Select last specification's data
 data_did <- did_mods$data[[1]] %>%
   # Average over treatment/control groups
   group_by(is_treatment, rel_time) %>%
-  summarise(across(c(don_count, don_total_usd, don_mean_usd), mean), .groups = "drop") %>%
+  # summarise(across(c(don_count, don_total_usd, don_mean_usd), mean), .groups = "drop") %>%
+  summarise(across(c(don_count, don_total_usd), mean), .groups = "drop") %>%
   mutate(don_count = if_else(is_treatment == 0, don_count * scaling_count, don_count)) %>%
-  mutate(don_mean_usd = if_else(is_treatment == 0, don_mean_usd / scaling_mean, don_mean_usd)) %>%
+  # mutate(don_mean_usd = if_else(is_treatment == 0, don_mean_usd / scaling_mean, don_mean_usd)) %>%
+  mutate(don_total_usd = if_else(is_treatment == 0, don_total_usd * scaling_total, don_total_usd)) %>%
   pivot_longer(contains("don")) %>%
   group_by(is_treatment,
            is_post = if_else(rel_time < 0, 0, 1),
@@ -231,8 +241,9 @@ plot_1 <- data_did %>%
   mutate(group = factor(is_treatment, levels = c(0, 1), labels = c("Foreign", "Ukrainian")),
          name = factor(name, levels = unique(name))) %>%
   filter(name == "don_count") %>%
-  ggplot(aes(x = rel_time, y = value, color = group, group = group)) +
-  scale_colour_manual(values = c("#800000FF", "#4747ba")) +
+  ggplot(aes(x = rel_time, y = value, color = group, group = group, linetype = group)) +
+  scale_colour_manual(name = "Type", values = c("#800000FF", "#CC8214FF")) +
+  scale_linetype_manual(name = "Type", values = c("41", "solid")) +
   geom_line(linewidth=1.5) +
   geom_line(aes(y = mean, color = group, group = interaction(is_post, group)), linetype = "dashed") +
   geom_vline(aes(xintercept = 0)) +
@@ -241,10 +252,15 @@ plot_1 <- data_did %>%
   theme_classic() +
   theme(axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0)),
         axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0),
-                                    color = "#4747ba", face= "bold", size = 15),
-        axis.line.y = element_line(color = "#4747ba", linewidth=1),
-        axis.ticks.y = element_line(color = "#4747ba"),
-        axis.text.y = element_text(color = "#4747ba"))
+                                    color = "#CC8214FF", face= "bold", size = 20),
+        axis.line.y = element_line(color = "#CC8214FF", linewidth=1),
+        axis.ticks.y = element_line(color = "#CC8214FF"),
+        axis.text.y = element_text(color = "#CC8214FF", size=13),
+        legend.position = "bottom",
+        legend.title = element_text(size=19),
+        legend.text = element_text(size=17),
+        legend.key.width = unit(1.5,"cm"),
+        axis.text.x = element_text(size=13))
 
 
 plot_1 <- plot_1 + new_scale_color() +
@@ -260,57 +276,64 @@ plot_2 <- data_did %>%
   mutate(group = factor(is_treatment, levels = c(0, 1), labels = c("Foreign", "Ukrainian")),
          name = factor(name, levels = unique(name))) %>%
   filter(name == "don_total_usd") %>%
-  ggplot(aes(x = rel_time, y = value, color = group, group = group)) +
-  scale_colour_manual(values = c("#800000FF", "#4747ba")) +
-  geom_line( linewidth=1.5) +
+  ggplot(aes(x = rel_time, y = value, color = group, group = group, linetype = group)) +
+  scale_colour_manual(name = "Type", values = c("#800000FF", "#CC8214FF")) +
+  scale_linetype_manual(name = "Type", values = c("41", "solid")) +
+  geom_line(linewidth=1.5) +
   geom_line(aes(y = mean, color = group, group = interaction(is_post, group)), linetype = "dashed") +
   geom_vline(aes(xintercept = 0)) +
   ylab("Donation total USD value (Ukrainian)") +
-  xlab(" ") +
+  xlab("Event timeline (number of hours before and after the event)") +
   #scale_y_continuous(sec.axis = sec_axis(~ ., name = "Donation total USD value (Foreign)")) +
   theme_classic() +
-  theme(axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0),face  = "bold", size = 13),
+  theme(axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0),face  = "bold", size = 20),
         axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0),
-                                    color = "#4747ba", face= "bold", size = 15),
-        axis.line.y = element_line(color = "#4747ba", linewidth=1),
-        axis.ticks.y = element_line(color = "#4747ba"),
-        axis.text.y = element_text(color = "#4747ba"))
+                                    color = "#CC8214FF", face= "bold", size = 20),
+        axis.line.y = element_line(color = "#CC8214FF", linewidth=1),
+        axis.ticks.y = element_line(color = "#CC8214FF"),
+        axis.text.y = element_text(color = "#CC8214FF", size=13),
+        legend.position = "bottom",
+        legend.title = element_text(size=19),
+        legend.text = element_text(size=17),
+        legend.key.width = unit(1.5,"cm"),
+        axis.text.x = element_text(size=13))
 
 plot_2 <- plot_2 + new_scale_color() +
-  scale_y_continuous(sec.axis = sec_axis(~ ., name = "Donation total USD value (Foreign)")) +
+  scale_y_continuous(sec.axis = sec_axis(~ ./scaling_total, name = "Donation total USD value (Foreign)")) +
   theme(axis.title.y.right = element_text(margin = margin(t = 0, r = 0, b = 0, l = 10),
                                           color = "#800000FF"),
         axis.line.y.right = element_line(color = "#800000FF"),
         axis.ticks.y.right = element_line(color = "#800000FF"),
         axis.text.y.right = element_text(color = "#800000FF"))
 
-plot_3 <- data_did %>%
-  mutate(group = factor(is_treatment, levels = c(0, 1), labels = c("Foreign", "Ukrainian")),
-         name = factor(name, levels = unique(name))) %>%
-  filter(name == "don_mean_usd") %>%
-  ggplot(aes(x = rel_time, y = value, color = group, group = group)) +
-  scale_color_uchicago() +
-  geom_line( linewidth=1.5) +
-  geom_line(aes(y = mean, color = group, group = interaction(is_post, group)), linetype = "dashed") +
-  geom_vline(aes(xintercept = 0)) +
-  scale_colour_manual(values = c("#800000FF", "#4747ba")) +
-  ylab("Donation mean USD value (Ukrainian)") +
-  xlab("Event timeline (number of hours before and after the event)") +
-  #scale_y_continuous(sec.axis = sec_axis(~ .*scaling, name = "Donation mean USD value (Foreign)"))+
-  theme_classic() +
-  theme(axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0), face= "bold", size = 15),
-        axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0),
-                                    color = "#4747ba", face= "bold", size = 15),
-        axis.line.y = element_line(color = "#4747ba", linewidth=1),
-        axis.ticks.y = element_line(color = "#4747ba"),
-        axis.text.y = element_text(color = "#4747ba"))
+# plot_3 <- data_did %>%
+#   mutate(group = factor(is_treatment, levels = c(0, 1), labels = c("Foreign", "Ukrainian")),
+#          name = factor(name, levels = unique(name))) %>%
+#   filter(name == "don_mean_usd") %>%
+#   ggplot(aes(x = rel_time, y = value, color = group, group = group)) +
+#   scale_color_uchicago() +
+#   geom_line( linewidth=1.5) +
+#   geom_line(aes(y = mean, color = group, group = interaction(is_post, group)), linetype = "dashed") +
+#   geom_vline(aes(xintercept = 0)) +
+#   scale_colour_manual(values = c("#800000FF", "#4747ba")) +
+#   ylab("Donation mean USD value (Ukrainian)") +
+#   xlab("Event timeline (number of hours before and after the event)") +
+#   #scale_y_continuous(sec.axis = sec_axis(~ .*scaling, name = "Donation mean USD value (Foreign)"))+
+#   theme_classic() +
+#   theme(axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0), face= "bold", size = 15),
+#         axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0),
+#                                     color = "#4747ba", face= "bold", size = 15),
+#         axis.line.y = element_line(color = "#4747ba", linewidth=1),
+#         axis.ticks.y = element_line(color = "#4747ba"),
+#         axis.text.y = element_text(color = "#4747ba"))
+#
+# plot_3 <- plot_3 + new_scale_color() +
+#   scale_y_continuous(sec.axis = sec_axis(~ .*scaling_mean, name = "Donation mean USD value (Foreign)")) +
+#   theme(axis.title.y.right = element_text(margin = margin(t = 0, r = 0, b = 0, l = 10),
+#                                           color ="#800000FF"),
+#         axis.line.y.right = element_line(color = "#800000FF"),
+#         axis.ticks.y.right = element_line(color = "#800000FF"),
+#         axis.text.y.right = element_text(color = "#800000FF"))
 
-plot_3 <- plot_3 + new_scale_color() +
-  scale_y_continuous(sec.axis = sec_axis(~ .*scaling_mean, name = "Donation mean USD value (Foreign)")) +
-  theme(axis.title.y.right = element_text(margin = margin(t = 0, r = 0, b = 0, l = 10),
-                                          color ="#800000FF"),
-        axis.line.y.right = element_line(color = "#800000FF"),
-        axis.ticks.y.right = element_line(color = "#800000FF"),
-        axis.text.y.right = element_text(color = "#800000FF"))
-
-ggpubr::ggarrange(plot_1, plot_2, plot_3, ncol = 1, legend = FALSE)
+# ggpubr::ggarrange(plot_1, plot_2, plot_3, ncol = 1, legend = FALSE)
+ggpubr::ggarrange(plot_1, plot_2, ncol = 1, common.legend = TRUE, legend = "top")
