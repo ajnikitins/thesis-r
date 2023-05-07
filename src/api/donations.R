@@ -3,10 +3,10 @@ library(lubridate)
 library(glue)
 
 # Merge fiat and crypto donations
-data_cba <- readRDS("data/cba/data_cba_rows.RDS")
-data_crypto <- readRDS("data/crypto/data_crypto.RDS")
+data_cba <- read_rds("data/cba/data_cba_rows.RDS")
+data_crypto <- read_rds("data/crypto/data_crypto.RDS")
 
-data_donations_hourly_sub <- bind_rows(data_cba, data_crypto) %>%
+data_donations_base <- bind_rows(data_cba, data_crypto) %>%
   mutate(date = ymd_hms(date),
          date = floor_date(date, unit = "hours")) %>%
   # Setup type names
@@ -28,30 +28,34 @@ data_donations_hourly_sub <- bind_rows(data_cba, data_crypto) %>%
   group_by(type, type_sub) %>%
   # filter(dplyr::between(value_usd, quantile(value_usd, 0.01), quantile(value_usd, 0.99))) %>%
   filter(dplyr::between(value_usd, 0, quantile(value_usd, 0.99))) %>%
-  # Calculate daily counts and means
-  group_by(type, type_sub, date) %>%
-  summarise(don_count = n(), don_total = sum(value), don_total_usd = sum(value_usd), don_mean = don_total / don_count, don_mean_usd = don_total_usd / don_count, .groups = "drop") %>%
-  right_join(tidyr::expand(., nesting(type, type_sub), date = full_seq(date, 3600)), by = c("type", "type_sub", "date")) %>%
-  mutate(across(c(-date, -type, -type_sub), ~ replace_na(., 0))) %>%
-  arrange(type, type_sub, date)
+  ungroup()
 
-saveRDS(data_donations_hourly_sub, "data/data_donations_hourly_sub.RDS")
+aggregate_donations <- \(main, grouping_vars, date_floor, date_expand) {
+    date_unit <- switch(date_floor, days = 24 * 3600, hours = 3600)
 
-aggregate_donations <- \(main, grouping_vars, date_floor) {
-    main %>%
+    result <- main %>%
       mutate(date = floor_date(date, unit = date_floor)) %>%
       group_by(across(all_of(grouping_vars)), date) %>%
-      summarise(across(c(don_count, don_total, don_total_usd), sum), don_mean = don_total / don_count, don_mean_usd = don_total_usd / don_count, .groups = "drop") %>%
-      mutate(across(-c(date, all_of(grouping_vars)), ~ replace_na(., 0))) %>%
-      arrange(across(all_of(grouping_vars)), date)
+      summarise(don_count = n(), don_total = sum(value), don_total_usd = sum(value_usd), don_mean = don_total / don_count, don_mean_usd = don_total_usd / don_count, .groups = "drop")
+
+    if (date_expand) {
+        result <- result %>%
+          right_join(tidyr::expand(., nesting(!!!syms(grouping_vars)), date = full_seq(date, date_unit)), by = c(grouping_vars, "date")) %>%
+          mutate(across(-c(date, all_of(grouping_vars)), ~ replace_na(., 0)))
+    }
+
+    arrange(result, across(all_of(grouping_vars)), date)
 }
 
-aggregations_donations <- data.frame(
-  name = c("data_donations_hourly", "data_donations_sub", "data_donations"),
-  grouping_vars = I(list(c("type"), c("type", "type_sub"), c("type"))),
-  date_floor = c("hours", "days", "days")
+data_donations_aggregations <- tribble(
+  ~name,                        ~grouping_vars,                 ~date_floor,    ~date_expand,
+  "data_donations_hourly_sub",  c("type", "type_sub"),          "hours",        TRUE,
+  "data_donations_hourly",      "type",                         "hours",        TRUE,
+  "data_donations_id",          c("type", "type_sub", "id"),    "days",         FALSE,
+  "data_donations_sub",         c("type", "type_sub"),          "days",         TRUE,
+  "data_donations",             "type",                         "days",         TRUE
 ) %>%
   rowwise() %>%
-  mutate(aggregated = list(aggregate_donations(data_donations_hourly_sub, grouping_vars, date_floor)))
+  mutate(aggregated = list(aggregate_donations(data_donations_base, grouping_vars, date_floor, date_expand)))
 
-walk2(aggregations_donations$aggregated, aggregations_donations$name, ~ saveRDS(.x, glue("data/{.y}.RDS")))
+walk2(data_donations_aggregations$aggregated, data_donations_aggregations$name, ~ write_rds(.x, glue("data/{.y}.RDS")))
