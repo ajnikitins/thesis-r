@@ -17,10 +17,9 @@ data_donations_hourly_sub <- bind_rows(data_cba, data_crypto) %>%
       TRUE ~ "Foreign"
     ),
     type_sub = case_when(
-      grepl("UAH|EUR|USD", currency) ~ currency,
       grepl( "Bitcoin", currency) ~ "BTC",
       grepl( "Ethereum", currency) ~ "ETH",
-      TRUE ~"Other"
+      TRUE ~ currency
     ),
     .keep = "unused") %>%
   # Filter to period
